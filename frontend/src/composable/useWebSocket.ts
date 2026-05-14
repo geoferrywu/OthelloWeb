@@ -8,6 +8,7 @@ import type {
   AIMoveData,
   GameOverData,
   MoveRecord,
+  Position,
 } from '../types'
 
 export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected'
@@ -21,6 +22,7 @@ interface UseWebSocketReturn {
   gameOver: Ref<boolean>
   overData: Ref<GameOverData | null>
   passEvent: Ref<boolean>
+  flippedCells: Ref<Position[]>
   connect: () => void
   joinGame: (mode: GameMode, color: Color, size: number) => void
   sendMove: (r: number, c: number) => void
@@ -39,6 +41,23 @@ export function useWebSocket(): UseWebSocketReturn {
   const gameOver = ref(false)
   const overData = ref<GameOverData | null>(null)
   const passEvent = ref(false)
+  const flippedCells = ref<Position[]>([])
+
+  function resolveWsUrl(): string {
+    const envUrl = import.meta.env.VITE_WS_URL as string | undefined
+    if (envUrl && envUrl.trim().length > 0) return envUrl
+
+    const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
+    const host = location.hostname
+    const port = location.port
+
+    // Vite dev server proxy mode (default :5173) can use same-origin /ws.
+    if (port === '5173') {
+      return `${protocol}://${location.host}/ws/game`
+    }
+    // Preview/static hosting should talk to backend directly.
+    return `${protocol}://${host}:8080/ws/game`
+  }
 
   function connect(onMessage?: (msg: WSMessage) => void) {
     if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
@@ -46,7 +65,7 @@ export function useWebSocket(): UseWebSocketReturn {
     }
 
     status.value = 'connecting'
-    const wsUrl = `ws://${location.host}/ws/game`
+    const wsUrl = resolveWsUrl()
     ws = new WebSocket(wsUrl)
 
     ws.onopen = () => {
@@ -83,6 +102,7 @@ export function useWebSocket(): UseWebSocketReturn {
         gameOver.value = false
         overData.value = null
         passEvent.value = false
+        flippedCells.value = []
         break
       }
       case 'STATE': {
@@ -91,13 +111,20 @@ export function useWebSocket(): UseWebSocketReturn {
         currentPlayer.value = data.currentPlayer
         if (data.history) history.value = data.history
         passEvent.value = !!data.pass
+        flippedCells.value = data.flipped || []
         break
       }
       case 'AI_MOVE': {
         const data = msg.data as unknown as AIMoveData
         board.value = data.board as unknown as number[][]
+        if (typeof data.currentPlayer === 'number') {
+          currentPlayer.value = data.currentPlayer
+        } else {
+          currentPlayer.value = currentPlayer.value === 1 ? 2 : 1
+        }
         if (data.history) history.value = data.history
         passEvent.value = false
+        flippedCells.value = data.flipped || []
         break
       }
       case 'GAME_OVER': {
@@ -114,16 +141,27 @@ export function useWebSocket(): UseWebSocketReturn {
   }
 
   function joinGame(mode: GameMode, color: Color, size: number) {
+    // Always start a fresh session connection so restart/back/new game works.
+    if (ws) {
+      ws.onclose = null
+      ws.onerror = null
+      ws.close()
+      ws = null
+    }
+    status.value = 'disconnected'
+
     connect()
     const checkOpen = () => {
       if (ws && ws.readyState === WebSocket.OPEN) {
         send('JOIN', { mode, color, size })
-      } else if (ws && ws.readyState === WebSocket.CONNECTING) {
-        setTimeout(checkOpen, 50)
-      } else {
-        connect()
-        setTimeout(checkOpen, 100)
+        return
       }
+      if (ws && ws.readyState === WebSocket.CONNECTING) {
+        setTimeout(checkOpen, 50)
+        return
+      }
+      connect()
+      setTimeout(checkOpen, 100)
     }
     checkOpen()
   }
@@ -153,6 +191,7 @@ export function useWebSocket(): UseWebSocketReturn {
     gameOver,
     overData,
     passEvent,
+    flippedCells,
     connect: () => connect(),
     joinGame,
     sendMove,

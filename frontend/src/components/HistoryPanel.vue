@@ -1,7 +1,7 @@
 <template>
   <div ref="panelRef" class="history-panel" :style="panelStyle">
     <div class="history-header" @mousedown="startDrag">
-      <h3>History</h3>
+      <h3>对局记录</h3>
       <button class="history-close" @click="$emit('close')">&times;</button>
     </div>
     <div class="history-list" ref="listRef">

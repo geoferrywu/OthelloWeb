@@ -1,5 +1,5 @@
 <template>
-  <div class="board" :style="{ gridTemplateColumns: `22px repeat(${size}, 1fr)` }">
+  <div v-if="boardReady" class="board" :style="{ gridTemplateColumns: `22px repeat(${size}, 1fr)` }">
     <div class="coord-label"></div>
     <div v-for="c in size" :key="'col'+c" class="coord-label">{{ colLabel(c - 1) }}</div>
 
@@ -13,10 +13,10 @@
         @click="handleClick(r - 1, c - 1)"
       >
         <div
-          v-if="board[r-1][c-1] !== 0"
+          v-if="cellAt(r - 1, c - 1) !== 0"
           class="disc"
           :class="[
-            board[r-1][c-1] === 1 ? 'black' : 'white',
+            cellAt(r - 1, c - 1) === 1 ? 'black' : 'white',
             { flipping: isFlipped(r-1, c-1) }
           ]"
         ></div>
@@ -28,6 +28,7 @@
       </div>
     </template>
   </div>
+  <div v-else class="board-placeholder">Loading board...</div>
 </template>
 
 <script setup lang="ts">
@@ -50,7 +51,19 @@ const emit = defineEmits<{
 }>()
 
 const size = computed(() => props.board.length || 8)
+const boardReady = computed(() => {
+  const s = props.board.length
+  if (s === 0) return false
+  return props.board.every((row) => Array.isArray(row) && row.length === s)
+})
 const animatingFlips = ref<Set<string>>(new Set())
+let clearFlipTimer: number | null = null
+
+function cellAt(r: number, c: number): number {
+  const row = props.board[r]
+  if (!row || c < 0 || c >= row.length) return 0
+  return row[c] ?? 0
+}
 
 function isFlipped(r: number, c: number): boolean {
   return animatingFlips.value.has(`${r},${c}`)
@@ -58,15 +71,23 @@ function isFlipped(r: number, c: number): boolean {
 
 watch(() => props.flippedCells, (cells) => {
   if (cells && cells.length > 0) {
+    if (clearFlipTimer !== null) {
+      window.clearTimeout(clearFlipTimer)
+      clearFlipTimer = null
+    }
     animatingFlips.value.clear()
     for (const f of cells) {
       animatingFlips.value.add(`${f.r},${f.c}`)
     }
-    setTimeout(() => animatingFlips.value.clear(), 400)
+    clearFlipTimer = window.setTimeout(() => {
+      animatingFlips.value.clear()
+      clearFlipTimer = null
+    }, 420)
   }
 })
 
 const validMovesSet = computed(() => {
+  if (!boardReady.value) return new Set<string>()
   if (props.currentPlayer !== props.playerColor) return new Set<string>()
   const moves = new Set<string>()
   const s = size.value
@@ -85,6 +106,7 @@ const validMovesSet = computed(() => {
 })
 
 const bestMove = computed(() => {
+  if (!boardReady.value) return null
   if (!props.showHint || !props.isPlayerTurn) return null
   const s = size.value
   if (s === 0) return null
@@ -216,5 +238,14 @@ function getFlipsForHint(board: number[][], r: number, c: number, player: Player
 @keyframes pulse {
   0%, 100% { transform: scale(1); opacity: 1; }
   50% { transform: scale(1.3); opacity: 0.7; }
+}
+
+.board-placeholder {
+  min-width: 320px;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #aaa;
 }
 </style>

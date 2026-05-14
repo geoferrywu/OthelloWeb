@@ -1,0 +1,913 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>黑白棋 - Othello</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', sans-serif;
+    background: #1a1a2e;
+    color: #eee;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  .container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+
+  h1 {
+    font-size: 2rem;
+    letter-spacing: 4px;
+    color: #e0e0e0;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.5);
+  }
+
+  .scoreboard {
+    display: flex;
+    gap: 40px;
+    align-items: center;
+    font-size: 1.1rem;
+  }
+
+  .player-score {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: rgba(255,255,255,0.05);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+
+  .player-score.active {
+    background: rgba(255,255,255,0.12);
+    box-shadow: 0 0 12px rgba(255,255,255,0.15);
+  }
+
+  .disc-icon {
+    width: 24px; height: 24px; border-radius: 50%; border: 2px solid #555;
+  }
+  .disc-icon.black { background: #222; border-color: #444; }
+  .disc-icon.white { background: #f0f0f0; border-color: #ccc; }
+
+  .disc {
+    width: 76%; height: 76%; border-radius: 50%;
+    position: absolute;
+    transition: transform 0.35s ease;
+  }
+
+  .disc.black {
+    background: radial-gradient(circle at 35% 35%, #555, #111);
+    box-shadow: 2px 2px 6px rgba(0,0,0,0.5);
+  }
+
+  .disc.white {
+    background: radial-gradient(circle at 35% 35%, #fff, #ccc);
+    box-shadow: 2px 2px 6px rgba(0,0,0,0.3);
+  }
+
+  .disc.flipping { animation: flip 0.35s ease forwards; }
+
+  @keyframes flip {
+    0%   { transform: rotateY(0deg); }
+    50%  { transform: rotateY(90deg); }
+    100% { transform: rotateY(0deg); }
+  }
+
+  .cell .hint {
+    width: 30%; height: 30%; border-radius: 50%;
+    background: rgba(0,0,0,0.2);
+    position: absolute;
+    pointer-events: none;
+  }
+
+  .cell .hint.on {
+    background: #ff4444;
+    box-shadow: 0 0 8px rgba(255,68,68,0.6);
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.3); opacity: 0.7; }
+  }
+
+  .status { font-size: 1.1rem; min-height: 1.5em; text-align: center; }
+
+  .btn-row { display: flex; gap: 12px; }
+
+  button {
+    padding: 10px 24px; border: none; border-radius: 8px;
+    font-size: 1rem; cursor: pointer;
+    background: #52b788; color: #111; font-weight: 600;
+    transition: background 0.2s;
+  }
+  button:hover { background: #74c69d; }
+  button:disabled { background: #555; color: #999; cursor: default; }
+
+  /* ---- Start screen ---- */
+  .start-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 28px;
+  }
+
+  .option-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .option-group label {
+    font-size: 1rem;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+  }
+
+  .pill-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .pill {
+    padding: 10px 28px;
+    border: 2px solid #555;
+    border-radius: 24px;
+    cursor: pointer;
+    font-size: 1rem;
+    background: transparent;
+    color: #ccc;
+    transition: border-color 0.2s, background 0.2s, color 0.2s;
+  }
+
+  .pill:hover { border-color: #52b788; color: #eee; }
+  .pill.selected {
+    border-color: #52b788;
+    background: #52b788;
+    color: #111;
+    font-weight: 600;
+  }
+
+  #startBtn {
+    padding: 14px 56px;
+    font-size: 1.2rem;
+    margin-top: 8px;
+  }
+
+  /* ---- Game screen ---- */
+  .game-screen { display: none; flex-direction: column; align-items: center; gap: 20px; width: 100%; }
+  .game-screen.show { display: flex; }
+  .start-screen.hide { display: none; }
+
+  /* ---- Floating history panel ---- */
+  .history-panel {
+    position: fixed;
+    right: 20px;
+    top: 100px;
+    z-index: 100;
+    width: 150px;
+    max-height: 400px;
+    background: #2a2a4a;
+    border-radius: 10px;
+    padding: 10px 8px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  }
+  .history-panel.dragging { cursor: grabbing; }
+  .history-panel.hidden { display: none; }
+
+  .history-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    cursor: grab;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .history-header:active { cursor: grabbing; }
+
+  .history-header h3 {
+    font-size: 0.85rem;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 0;
+  }
+
+  .history-close {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+  }
+  .history-close:hover { color: #eee; }
+
+  .board {
+    display: grid;
+    gap: 3px;
+    padding: 12px;
+    background: #2d6a4f;
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+
+  .cell {
+    width: 52px;
+    height: 52px;
+    background: #40916c;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    position: relative;
+    transition: background 0.15s;
+  }
+
+  .cell:hover { background: #52b788; }
+  .cell.disabled { cursor: default; pointer-events: none; }
+  .cell.disabled:hover { background: #40916c; }
+
+  .coord-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255,255,255,0.5);
+    font-size: 0.75rem;
+    font-weight: 600;
+    -webkit-user-select: none;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .history-list {
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    cursor: text;
+  }
+
+  .history-item {
+    font-size: 0.85rem;
+    padding: 3px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+    cursor: text;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  .history-item.black-move { color: #ddd; }
+  .history-item.white-move { color: #ccc; }
+  .history-item.pass { color: #777; font-style: italic; }
+
+  /* ---- Modal ---- */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.6);
+    justify-content: center;
+    align-items: center;
+  }
+  .modal-overlay.show { display: flex; }
+
+  .modal {
+    background: #2a2a4a;
+    padding: 32px 48px;
+    border-radius: 16px;
+    text-align: center;
+    box-shadow: 0 12px 48px rgba(0,0,0,0.5);
+  }
+  .modal h2 { font-size: 1.6rem; margin-bottom: 12px; }
+  .modal p  { margin-bottom: 20px; font-size: 1.1rem; }
+
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>黑白棋</h1>
+
+  <!-- Start screen -->
+  <div class="start-screen" id="startScreen">
+    <div class="option-group">
+      <label>执棋</label>
+      <div class="pill-row">
+        <div class="pill selected" data-group="color" data-value="BLACK">黑棋（先手）</div>
+        <div class="pill" data-group="color" data-value="WHITE">白棋</div>
+      </div>
+    </div>
+    <div class="option-group">
+      <label>棋盘大小</label>
+      <div class="pill-row">
+        <div class="pill" data-group="size" data-value="6">6 × 6</div>
+        <div class="pill selected" data-group="size" data-value="8">8 × 8</div>
+        <div class="pill" data-group="size" data-value="10">10 × 10</div>
+      </div>
+    </div>
+    <button id="startBtn">开始游戏</button>
+  </div>
+
+  <!-- Game screen -->
+  <div class="game-screen" id="gameScreen">
+    <div class="scoreboard">
+      <div class="player-score" id="blackPanel">
+        <span class="disc-icon black"></span>
+        <span>黑棋: <strong id="blackScore">2</strong></span>
+      </div>
+      <div class="player-score" id="whitePanel">
+        <span class="disc-icon white"></span>
+        <span>白棋: <strong id="whiteScore">2</strong></span>
+      </div>
+    </div>
+
+    <div class="status" id="status">黑棋先行</div>
+
+    <div class="board" id="board"></div>
+
+    <div class="btn-row">
+      <button id="undoBtn" disabled>悔棋</button>
+      <button id="historyToggle">落子记录</button>
+      <button id="hintBtn">提示: 关</button>
+      <button id="backBtn">返回</button>
+    </div>
+  </div>
+</div>
+
+<div class="history-panel" id="historyPanel">
+  <div class="history-header">
+    <h3>落子记录</h3>
+    <button class="history-close" id="historyClose">&times;</button>
+  </div>
+  <div class="history-list" id="historyList"></div>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <h2 id="modalTitle">游戏结束</h2>
+    <p id="modalMsg"></p>
+    <button id="modalBtn">再来一局</button>
+  </div>
+</div>
+
+<script>
+const EMPTY = 0, BLACK = 1, WHITE = 2;
+const DIRS = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+
+let board, currentPlayer, history, gameOver, size;
+let playerColor, aiColor;
+let moveLog;
+let showHint = false;
+
+/* ---------- start screen pills ---------- */
+document.querySelectorAll('.pill').forEach(pill => {
+  pill.addEventListener('click', () => {
+    const group = pill.dataset.group;
+    document.querySelectorAll(`.pill[data-group="${group}"]`).forEach(p => p.classList.remove('selected'));
+    pill.classList.add('selected');
+  });
+});
+
+function readPill(group) {
+  return document.querySelector(`.pill[data-group="${group}"].selected`).dataset.value;
+}
+
+/* ---------- start / back ---------- */
+document.getElementById('startBtn').addEventListener('click', () => {
+  const colorStr = readPill('color');
+  playerColor = colorStr === 'BLACK' ? BLACK : WHITE;
+  aiColor = playerColor === BLACK ? WHITE : BLACK;
+  size = parseInt(readPill('size'), 10);
+
+  document.getElementById('startScreen').classList.add('hide');
+  document.getElementById('gameScreen').classList.add('show');
+  init();
+});
+
+document.getElementById('backBtn').addEventListener('click', () => {
+  document.getElementById('startScreen').classList.remove('hide');
+  document.getElementById('gameScreen').classList.remove('show');
+  document.getElementById('modal').classList.remove('show');
+});
+
+document.getElementById('modalBtn').addEventListener('click', init);
+
+/* ---------- core game logic ---------- */
+function init() {
+  board = Array.from({length: size}, () => Array(size).fill(EMPTY));
+  const mid = Math.floor(size / 2);
+  const half = Math.ceil(size / 2) - 1;
+  // For 6x6: mid=3, half=2 => init around (2,3)
+  // For 8x8: mid=4, half=3 => init around (3,4)
+  const c1 = half, c2 = mid;
+  board[c1][c1] = WHITE; board[c1][c2] = BLACK;
+  board[c2][c1] = BLACK; board[c2][c2] = WHITE;
+
+  currentPlayer = BLACK;
+  history = [];
+  moveLog = [];
+  gameOver = false;
+  document.getElementById('modal').classList.remove('show');
+  renderHistoryList();
+  render();
+  updateStatus();
+
+  // If AI plays first (player chose white), AI moves immediately
+  if (playerColor === WHITE && currentPlayer === aiColor && !gameOver) {
+    setTimeout(aiTurn, 400);
+  }
+}
+
+function inBounds(r, c) { return r >= 0 && r < size && c >= 0 && c < size; }
+
+function getFlips(b, r, c, player) {
+  if (b[r][c] !== EMPTY) return [];
+  const opp = player === BLACK ? WHITE : BLACK;
+  let all = [];
+  for (const [dr, dc] of DIRS) {
+    let flips = [];
+    let nr = r + dr, nc = c + dc;
+    while (inBounds(nr, nc) && b[nr][nc] === opp) {
+      flips.push([nr, nc]);
+      nr += dr; nc += dc;
+    }
+    if (flips.length > 0 && inBounds(nr, nc) && b[nr][nc] === player) {
+      all.push(...flips);
+    }
+  }
+  return all;
+}
+
+function getValidMoves(b, player) {
+  let moves = {};
+  for (let r = 0; r < size; r++)
+    for (let c = 0; c < size; c++) {
+      const flips = getFlips(b, r, c, player);
+      if (flips.length) moves[`${r},${c}`] = flips;
+    }
+  return moves;
+}
+
+function place(r, c) {
+  const moves = getValidMoves(board, currentPlayer);
+  const key = `${r},${c}`;
+  if (!moves[key] || gameOver) return;
+  // Only allow the human player to place
+  if (currentPlayer !== playerColor) return;
+
+  doMove(r, c, moves);
+}
+
+function doMove(r, c, moves) {
+  if (!moves) {
+    moves = getValidMoves(board, currentPlayer);
+  }
+  const key = `${r},${c}`;
+  if (!moves[key]) return false;
+
+  history.push({
+    board: board.map(row => [...row]),
+    player: currentPlayer
+  });
+
+  board[r][c] = currentPlayer;
+  for (const [fr, fc] of moves[key]) board[fr][fc] = currentPlayer;
+
+  // 立即记录当前落子，防止后续跳过逻辑提前 return 导致漏记
+  logMove(currentPlayer, r, c, false);
+  currentPlayer = currentPlayer === BLACK ? WHITE : BLACK;
+
+  if (Object.keys(getValidMoves(board, currentPlayer)).length === 0) {
+    const skipColor = currentPlayer;
+    // 在跳过前记录状态到 history，确保悔棋步数同步
+    history.push({
+      board: board.map(row => [...row]),
+      player: currentPlayer
+    });
+    currentPlayer = currentPlayer === BLACK ? WHITE : BLACK;
+    if (Object.keys(getValidMoves(board, currentPlayer)).length === 0) {
+      endGame();
+      render();
+      return true;
+    }
+    // skipColor had no moves and must pass
+    logMove(skipColor, 0, 0, true);
+    render();
+    updateStatus(skipColor);
+    if (!gameOver && currentPlayer === aiColor) {
+      setTimeout(aiTurn, 400);
+    }
+    return true;
+  }
+
+  render(key, moves[key]);
+  updateStatus();
+
+  // Trigger AI turn if it's AI's turn now
+  if (!gameOver && currentPlayer === aiColor) {
+    setTimeout(aiTurn, 400);
+  }
+
+  return true;
+}
+
+/* ---------- AI (minimax with alpha-beta) ---------- */
+function aiDepth() { return size <= 6 ? 6 : 4; }
+
+// Positional weights for evaluation
+function weightMatrix(s) {
+  const w = Array.from({length: s}, () => Array(s).fill(0));
+  const edge = s - 1;
+  // Corner bonus
+  w[0][0] = 120; w[0][edge] = 120; w[edge][0] = 120; w[edge][edge] = 120;
+  // Near-corner penalty
+  const near = [
+    [0,1],[1,0],[1,1],
+    [0,edge-1],[1,edge-1],[1,edge],
+    [edge-1,0],[edge,1],[edge-1,1],
+    [edge-1,edge],[edge,edge-1],[edge-1,edge-1]
+  ];
+  for (const [r,c] of near) { if (r >= 0 && r < s && c >= 0 && c < s) w[r][c] = -40; }
+  // Edge bonus
+  for (let i = 1; i < s-1; i++) { w[0][i] = 20; w[edge][i] = 20; w[i][0] = 20; w[i][edge] = 20; }
+  return w;
+}
+
+let _weights;
+
+function evaluate(b) {
+  let score = 0;
+  let black = 0, white = 0;
+  for (let r = 0; r < size; r++)
+    for (let c = 0; c < size; c++) {
+      if (b[r][c] === BLACK) { score += _weights[r][c]; black++; }
+      else if (b[r][c] === WHITE) { score -= _weights[r][c]; white++; }
+    }
+  return aiColor === BLACK ? score : -score;
+}
+
+function minimax(b, depth, alpha, beta, maximizing) {
+  const player = maximizing ? aiColor : playerColor;
+  const moves = getValidMoves(b, player);
+  const keys = Object.keys(moves);
+
+  if (depth === 0 || keys.length === 0) {
+    const nextPlayer = player === BLACK ? WHITE : BLACK;
+    if (keys.length === 0 && Object.keys(getValidMoves(b, nextPlayer)).length === 0) {
+      // Game over – return actual score
+      let bl = 0, wh = 0;
+      for (let r = 0; r < size; r++)
+        for (let c = 0; c < size; c++) {
+          if (b[r][c] === BLACK) bl++;
+          else if (b[r][c] === WHITE) wh++;
+        }
+      const diff = bl - wh;
+      return aiColor === BLACK ? diff * 100 : -diff * 100;
+    }
+    return evaluate(b);
+  }
+
+  // Sort moves by number of flips for better pruning
+  keys.sort((a, b) => moves[b].length - moves[a].length);
+
+  if (maximizing) {
+    let best = -Infinity;
+    for (const key of keys) {
+      const [r, c] = key.split(',').map(Number);
+      const nb = b.map(row => [...row]);
+      nb[r][c] = aiColor;
+      for (const [fr, fc] of moves[key]) nb[fr][fc] = aiColor;
+      best = Math.max(best, minimax(nb, depth - 1, alpha, beta, false));
+      alpha = Math.max(alpha, best);
+      if (alpha >= beta) break;
+    }
+    return best;
+  } else {
+    let best = Infinity;
+    for (const key of keys) {
+      const [r, c] = key.split(',').map(Number);
+      const nb = b.map(row => [...row]);
+      nb[r][c] = playerColor;
+      for (const [fr, fc] of moves[key]) nb[fr][fc] = playerColor;
+      best = Math.min(best, minimax(nb, depth - 1, alpha, beta, true));
+      beta = Math.min(beta, best);
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+}
+
+function aiTurn() {
+  if (gameOver) return;
+  updateStatus(null, true);
+
+  setTimeout(() => {
+    _weights = weightMatrix(size);
+    const moves = getValidMoves(board, aiColor);
+    const keys = Object.keys(moves);
+    if (!keys.length) {
+      // AI passes
+      const next = aiColor === BLACK ? WHITE : BLACK;
+      if (Object.keys(getValidMoves(board, next)).length === 0) {
+        endGame();
+        render();
+        updateStatus();
+        return;
+      }
+      // AI 跳过时也需要记录历史状态
+      history.push({
+        board: board.map(row => [...row]),
+        player: aiColor
+      });
+      currentPlayer = next;
+      logMove(aiColor, 0, 0, true);
+      render();
+      updateStatus(aiColor);
+      if (!gameOver && currentPlayer === aiColor) {
+        setTimeout(aiTurn, 400);
+      }
+      return;
+    }
+
+    let bestScore = -Infinity, bestKey = keys[0];
+    for (const key of keys) {
+      const [r, c] = key.split(',').map(Number);
+      const nb = board.map(row => [...row]);
+      nb[r][c] = aiColor;
+      for (const [fr, fc] of moves[key]) nb[fr][fc] = aiColor;
+      const sc = minimax(nb, aiDepth() - 1, -Infinity, Infinity, false);
+      if (sc > bestScore) { bestScore = sc; bestKey = key; }
+    }
+
+    const [r, c] = bestKey.split(',').map(Number);
+    doMove(r, c, moves);
+  }, 300);
+}
+
+/* ---------- UI ---------- */
+function colLabel(c) { return String.fromCharCode(65 + c); }
+function rowLabel(r) { return String(r + 1); }
+function coord(r, c) { return colLabel(c) + rowLabel(r); }
+
+function getBestMoveForPlayer(player) {
+  const moves = getValidMoves(board, player);
+  const keys = Object.keys(moves);
+  if (!keys.length) return null;
+
+  // Temporarily swap ai/player roles so minimax searches from player's perspective
+  const tmp = aiColor;
+  aiColor = player;
+  // playerColor is the other color
+  const other = player === BLACK ? WHITE : BLACK;
+  const origPlayerColor = playerColor;
+  playerColor = other;
+
+  _weights = weightMatrix(size);
+  const depth = aiDepth();
+
+  let bestScore = -Infinity, bestKey = keys[0];
+  for (const key of keys) {
+    const [r, c] = key.split(',').map(Number);
+    const nb = board.map(row => [...row]);
+    nb[r][c] = player;
+    for (const [fr, fc] of moves[key]) nb[fr][fc] = player;
+    const sc = minimax(nb, depth - 1, -Infinity, Infinity, false);
+    if (sc > bestScore) { bestScore = sc; bestKey = key; }
+  }
+
+  // Restore
+  aiColor = tmp;
+  playerColor = origPlayerColor;
+
+  return bestKey.split(',').map(Number);
+}
+
+function logMove(color, r, c, pass) {
+  const name = color === BLACK ? '黑' : '白';
+  const text = pass ? `${name}:跳过` : `${name}:${coord(r, c)}`;
+  moveLog.push({ color, text, pass });
+  renderHistoryList();
+}
+
+function renderHistoryList() {
+  const el = document.getElementById('historyList');
+  el.innerHTML = '';
+  for (const m of moveLog) {
+    const item = document.createElement('div');
+    item.className = 'history-item';
+    item.classList.add(m.pass ? 'pass' : (m.color === BLACK ? 'black-move' : 'white-move'));
+    item.textContent = m.text;
+    el.appendChild(item);
+  }
+  el.scrollTop = el.scrollHeight;
+}
+function undo() {
+  if (history.length === 0 || gameOver || currentPlayer !== playerColor) return;
+
+  // 持续回退，直到回到玩家的回合，并且已经撤销了玩家至少一步操作
+  let undonePlayerAction = false;
+  while (history.length > 0) {
+    const lastState = history.pop();
+    moveLog.pop();
+
+    board = lastState.board;
+    currentPlayer = lastState.player;
+
+    if (currentPlayer === playerColor) {
+      undonePlayerAction = true;
+    }
+
+    // 如果当前恢复到了玩家回合，且已经撤销过玩家的动作，则停止
+    if (currentPlayer === playerColor && undonePlayerAction) break;
+  }
+
+  renderHistoryList();
+  render();
+  updateStatus();
+
+  // 如果悔棋后恢复到了 AI 的回合，需要触发 AI 思考
+  if (!gameOver && currentPlayer === aiColor) {
+    setTimeout(aiTurn, 400);
+  }
+}
+
+function endGame() {
+  gameOver = true;
+  let blacks = 0, whites = 0;
+  for (let r = 0; r < size; r++)
+    for (let c = 0; c < size; c++) {
+      if (board[r][c] === BLACK) blacks++;
+      else if (board[r][c] === WHITE) whites++;
+    }
+  const modal = document.getElementById('modal');
+  document.getElementById('modalTitle').textContent = '游戏结束';
+  if (blacks > whites)
+    document.getElementById('modalMsg').textContent = `黑棋 ${blacks} : ${whites} 白棋 — 黑棋胜！`;
+  else if (whites > blacks)
+    document.getElementById('modalMsg').textContent = `白棋 ${whites} : ${blacks} 黑棋 — 白棋胜！`;
+  else
+    document.getElementById('modalMsg').textContent = `${blacks} : ${blacks} — 平局！`;
+  setTimeout(() => modal.classList.add('show'), 300);
+}
+
+function render(lastKey, flippedCells) {
+  const el = document.getElementById('board');
+  el.innerHTML = '';
+  // Grid: 1 label col + size board cols
+  el.style.gridTemplateColumns = `22px repeat(${size}, 1fr)`;
+
+  const moves = getValidMoves(board, currentPlayer);
+  const isPlayerTurn = currentPlayer === playerColor;
+
+  // Top label cell + column labels (A, B, C...)
+  const cornerLabel = document.createElement('div');
+  cornerLabel.className = 'coord-label';
+  el.appendChild(cornerLabel);
+  for (let c = 0; c < size; c++) {
+    const lbl = document.createElement('div');
+    lbl.className = 'coord-label';
+    lbl.textContent = colLabel(c);
+    el.appendChild(lbl);
+  }
+
+  for (let r = 0; r < size; r++) {
+    // Row label (1, 2, 3...)
+    const rlbl = document.createElement('div');
+    rlbl.className = 'coord-label';
+    rlbl.textContent = rowLabel(r);
+    el.appendChild(rlbl);
+
+    for (let c = 0; c < size; c++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      if (!isPlayerTurn) cell.classList.add('disabled');
+      cell.dataset.r = r;
+      cell.dataset.c = c;
+      cell.addEventListener('click', () => place(r, c));
+
+      if (board[r][c] !== EMPTY) {
+        const disc = document.createElement('div');
+        disc.className = `disc ${board[r][c] === BLACK ? 'black' : 'white'}`;
+        if (flippedCells?.some(([fr,fc]) => fr===r && fc===c)) {
+          disc.classList.add('flipping');
+        }
+        cell.appendChild(disc);
+      } else if (moves[`${r},${c}`] && isPlayerTurn) {
+        const best = showHint ? getBestMoveForPlayer(playerColor) : null;
+        const isBest = best && best[0] === r && best[1] === c;
+        const hint = document.createElement('div');
+        hint.className = isBest ? 'hint on' : 'hint';
+        cell.appendChild(hint);
+      }
+
+      el.appendChild(cell);
+    }
+  }
+
+  updateScore();
+  document.getElementById('undoBtn').disabled = history.length < 1 || gameOver || currentPlayer !== playerColor;
+}
+
+function updateScore() {
+  let blacks = 0, whites = 0;
+  for (let r = 0; r < size; r++)
+    for (let c = 0; c < size; c++) {
+      if (board[r][c] === BLACK) blacks++;
+      else if (board[r][c] === WHITE) whites++;
+    }
+  document.getElementById('blackScore').textContent = blacks;
+  document.getElementById('whiteScore').textContent = whites;
+}
+
+function updateStatus(passedColor = null, thinking = false) {
+  if (gameOver) return;
+
+  const activeName = currentPlayer === BLACK ? '黑棋' : '白棋';
+
+  // 如果传入了跳过的颜色，显示跳过信息
+  if (passedColor === BLACK || passedColor === WHITE) {
+    const skipName = passedColor === BLACK ? '黑棋' : '白棋';
+    document.getElementById('status').textContent = `${skipName}无子可落，跳过一回合`;
+    document.getElementById('blackPanel').classList.toggle('active', currentPlayer === BLACK);
+    document.getElementById('whitePanel').classList.toggle('active', currentPlayer === WHITE);
+    // 1.5秒后自动切换回正常的落子提示
+    setTimeout(() => {
+      if (!gameOver) updateStatus(null, currentPlayer === aiColor);
+    }, 1500);
+    return;
+  }
+
+  let msg = `${activeName}落子`;
+  if (thinking && currentPlayer === aiColor) msg = `${activeName}落子（思考中...）`;
+  document.getElementById('status').textContent = msg;
+  document.getElementById('blackPanel').classList.toggle('active', currentPlayer === BLACK);
+  document.getElementById('whitePanel').classList.toggle('active', currentPlayer === WHITE);
+}
+
+document.getElementById('undoBtn').addEventListener('click', undo);
+
+document.getElementById('hintBtn').addEventListener('click', () => {
+  showHint = !showHint;
+  document.getElementById('hintBtn').textContent = `提示: ${showHint ? '开' : '关'}`;
+  render();
+});
+
+/* ---------- History panel: close, toggle, drag ---------- */
+document.getElementById('historyClose').addEventListener('click', () => {
+  document.getElementById('historyPanel').classList.add('hidden');
+});
+
+document.getElementById('historyToggle').addEventListener('click', () => {
+  document.getElementById('historyPanel').classList.remove('hidden');
+});
+
+// Drag logic
+const panel = document.getElementById('historyPanel');
+const header = panel.querySelector('.history-header');
+let dragging = false, dragOffX = 0, dragOffY = 0;
+
+header.addEventListener('mousedown', (e) => {
+  dragging = true;
+  panel.classList.add('dragging');
+  const rect = panel.getBoundingClientRect();
+  dragOffX = e.clientX - rect.left;
+  dragOffY = e.clientY - rect.top;
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove', (e) => {
+  if (!dragging) return;
+  panel.style.left = (e.clientX - dragOffX) + 'px';
+  panel.style.top = (e.clientY - dragOffY) + 'px';
+  panel.style.right = 'auto';
+});
+
+document.addEventListener('mouseup', () => {
+  dragging = false;
+});
+</script>
+</body>
+</html>

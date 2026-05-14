@@ -192,6 +192,13 @@ func handleWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	// Start reader and writer goroutines
 	go client.writePump()
 	go client.readPump(hub)
+
+	// In PvE, AI may need to move first (e.g. player chose WHITE).
+	go func() {
+		client.Session.Mutex.Lock()
+		defer client.Session.Mutex.Unlock()
+		client.runAIMoveIfNeeded(hub)
+	}()
 }
 
 func (c *Client) readPump(hub *Hub) {
@@ -276,58 +283,77 @@ func (c *Client) handleMove(hub *Hub, data json.RawMessage) {
 	}
 	hub.Broadcast(gs, c, stateMsg)
 
-	// Check for game over or pass
-	if gs.GameOver {
-		c.handleGameOver(hub)
+	if c.resolvePassAndGameOver(hub) {
 		return
 	}
 
-	// Check if current player has any moves
-	nextMoves := gs.ValidMoves(gs.CurrentPlayer)
-	if len(nextMoves) == 0 {
-		// Current player must pass
-		passColor := gs.CurrentPlayer
-		gs.History = append(gs.History, game.Move{
-			Player:   passColor,
-			Position: nil,
-		})
-		gs.CurrentPlayer = passColor.Opponent()
+	c.runAIMoveIfNeeded(hub)
+}
 
-		// Notify about pass
-		passMsg := WSMessage{
-			Type: "STATE",
-			Data: mustMarshal(map[string]any{
-				"board":         gs.Board,
-				"currentPlayer": int(gs.CurrentPlayer),
-				"pass":          true,
-				"history":       gs.History,
-			}),
-		}
-		hub.Broadcast(gs, c, passMsg)
+func (c *Client) handleUndo(hub *Hub) {
+	if c.Session.Mode != game.ModePVE {
+		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Undo only available in PvE"})})
+		return
+	}
 
-		// Check if next player can move
-		nextMoves2 := gs.ValidMoves(gs.CurrentPlayer)
-		if len(nextMoves2) == 0 {
-			gs.GameOver = true
-			c.handleGameOver(hub)
-			return
+	gs := c.Session.State
+	if len(gs.History) == 0 {
+		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Cannot undo"})})
+		return
+	}
+
+	// Rebuild all prefix states and roll back to the previous "player turn" state.
+	prefixStates := buildPrefixStates(gs.Size, gs.History)
+	if len(prefixStates) == 0 {
+		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Cannot undo"})})
+		return
+	}
+
+	target := 0
+	for i := len(prefixStates) - 2; i >= 0; i-- {
+		if prefixStates[i].CurrentPlayer == c.Color {
+			target = i
+			break
 		}
 	}
 
-	// AI turn for PvE
-	if c.Session.Mode == game.ModePVE && gs.CurrentPlayer == c.Session.AI.Color {
-		// Unlock briefly to avoid deadlock during AI computation
+	newGs := prefixStates[target]
+	*gs = *newGs
+
+	undoMsg := WSMessage{
+		Type: "STATE",
+		Data: mustMarshal(map[string]any{
+			"board":         gs.Board,
+			"currentPlayer": int(gs.CurrentPlayer),
+			"history":       gs.History,
+			"undone":        true,
+		}),
+	}
+	hub.Broadcast(gs, c, undoMsg)
+
+	// If undo leaves turn on AI, let AI move immediately.
+	c.runAIMoveIfNeeded(hub)
+}
+
+func (c *Client) runAIMoveIfNeeded(hub *Hub) {
+	gs := c.Session.State
+	if c.Session.Mode != game.ModePVE || gs.GameOver {
+		return
+	}
+
+	for c.Session.Mode == game.ModePVE && !gs.GameOver && gs.CurrentPlayer == c.Session.AI.Color {
+		// Unlock briefly to avoid deadlock during AI computation.
 		c.Session.Mutex.Unlock()
 		time.Sleep(300 * time.Millisecond)
 		c.Session.Mutex.Lock()
 
-		if gs.GameOver {
+		if gs.GameOver || gs.CurrentPlayer != c.Session.AI.Color {
 			return
 		}
 
 		bestPos := c.Session.AI.FindBestMove(gs)
 		if bestPos == nil {
-			// AI passes
+			// AI cannot move -> pass.
 			gs.History = append(gs.History, game.Move{
 				Player:   gs.CurrentPlayer,
 				Position: nil,
@@ -344,73 +370,90 @@ func (c *Client) handleMove(hub *Hub, data json.RawMessage) {
 				}),
 			}
 			hub.Broadcast(gs, c, passMsg)
+			if c.resolvePassAndGameOver(hub) {
+				return
+			}
 			return
 		}
 
 		aiFlips, _ := gs.DoMove(bestPos.R, bestPos.C, gs.CurrentPlayer)
-
 		aiMsg := WSMessage{
 			Type: "AI_MOVE",
 			Data: mustMarshal(map[string]any{
-				"r":       bestPos.R,
-				"c":       bestPos.C,
-				"flipped": aiFlips,
-				"board":   gs.Board,
-				"history": gs.History,
+				"r":             bestPos.R,
+				"c":             bestPos.C,
+				"flipped":       aiFlips,
+				"board":         gs.Board,
+				"history":       gs.History,
+				"currentPlayer": int(gs.CurrentPlayer),
 			}),
 		}
 		hub.Broadcast(gs, c, aiMsg)
-
-		// Check for game over after AI move
-		if gs.CurrentPlayer == c.Color && len(gs.ValidMoves(c.Color)) == 0 {
-			if len(gs.ValidMoves(gs.CurrentPlayer)) == 0 {
-				gs.GameOver = true
-				c.handleGameOver(hub)
-			}
+		if c.resolvePassAndGameOver(hub) {
+			return
 		}
 	}
 }
 
-func (c *Client) handleUndo(hub *Hub) {
-	if c.Session.Mode != game.ModePVE {
-		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Undo only available in PvE"})})
-		return
-	}
-
+func (c *Client) resolvePassAndGameOver(hub *Hub) bool {
 	gs := c.Session.State
-	if gs.CurrentPlayer != c.Color || len(gs.History) < 2 {
-		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Cannot undo"})})
-		return
+	if gs.GameOver {
+		c.handleGameOver(hub)
+		return true
 	}
 
-	// Undo AI move + player move (2 history entries)
-	if len(gs.History) >= 2 {
-		gs.History = gs.History[:len(gs.History)-2]
+	if len(gs.ValidMoves(gs.CurrentPlayer)) > 0 {
+		return false
 	}
 
-	// Rebuild board from scratch
-	newGs := game.NewGameState(gs.Size)
-	for _, m := range gs.History {
-		if m.Position != nil {
-			newGs.DoMove(m.Position.R, m.Position.C, m.Player)
-		} else {
-			newGs.History = append(newGs.History, m)
-			newGs.CurrentPlayer = m.Player.Opponent()
-		}
-	}
+	// Current player must pass.
+	passColor := gs.CurrentPlayer
+	gs.History = append(gs.History, game.Move{
+		Player:   passColor,
+		Position: nil,
+	})
+	gs.CurrentPlayer = passColor.Opponent()
 
-	*gs = *newGs
-
-	undoMsg := WSMessage{
+	passMsg := WSMessage{
 		Type: "STATE",
 		Data: mustMarshal(map[string]any{
 			"board":         gs.Board,
 			"currentPlayer": int(gs.CurrentPlayer),
+			"pass":          true,
 			"history":       gs.History,
-			"undone":        true,
 		}),
 	}
-	hub.Broadcast(gs, c, undoMsg)
+	hub.Broadcast(gs, c, passMsg)
+
+	if len(gs.ValidMoves(gs.CurrentPlayer)) == 0 {
+		gs.GameOver = true
+		c.handleGameOver(hub)
+		return true
+	}
+	return false
+}
+
+func buildPrefixStates(size int, history []game.Move) []*game.GameState {
+	states := make([]*game.GameState, 0, len(history)+1)
+	gs := game.NewGameState(size)
+	states = append(states, gs.Clone())
+
+	for _, m := range history {
+		if m.Position != nil {
+			_, ok := gs.DoMove(m.Position.R, m.Position.C, m.Player)
+			if !ok {
+				break
+			}
+		} else {
+			gs.History = append(gs.History, game.Move{
+				Player:   m.Player,
+				Position: nil,
+			})
+			gs.CurrentPlayer = m.Player.Opponent()
+		}
+		states = append(states, gs.Clone())
+	}
+	return states
 }
 
 func (c *Client) handleGameOver(hub *Hub) {

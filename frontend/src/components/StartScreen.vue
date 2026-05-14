@@ -1,23 +1,23 @@
 <template>
   <div class="start-screen">
     <div class="option-group">
-      <label>Mode</label>
+      <label>模式</label>
       <div class="pill-row">
-        <div class="pill" :class="{ selected: mode === 'PVE' }" @click="mode = 'PVE'">PvE</div>
-        <div class="pill" :class="{ selected: mode === 'PVP' }" @click="mode = 'PVP'">PvP</div>
+        <div class="pill" :class="{ selected: mode === 'PVE' }" @click="mode = 'PVE'">人机对战</div>
+        <div class="pill" :class="{ selected: mode === 'PVP' }" @click="mode = 'PVP'">双人对战</div>
       </div>
     </div>
 
     <div class="option-group">
-      <label>Color</label>
+      <label>执子</label>
       <div class="pill-row">
-        <div class="pill" :class="{ selected: color === 'BLACK' }" @click="color = 'BLACK'">Black</div>
-        <div class="pill" :class="{ selected: color === 'WHITE' }" @click="color = 'WHITE'">White</div>
+        <div class="pill" :class="{ selected: color === 'BLACK' }" @click="color = 'BLACK'">黑方先手</div>
+        <div class="pill" :class="{ selected: color === 'WHITE' }" @click="color = 'WHITE'">白方后手</div>
       </div>
     </div>
 
     <div class="option-group">
-      <label>Board Size</label>
+      <label>棋盘大小</label>
       <div class="pill-row">
         <div class="pill" :class="{ selected: size === 6 }" @click="size = 6">6 x 6</div>
         <div class="pill" :class="{ selected: size === 8 }" @click="size = 8">8 x 8</div>
@@ -26,7 +26,7 @@
     </div>
 
     <button id="startBtn" @click="handleStart" :disabled="wsStatus !== 'connected'">
-      {{ wsStatus === 'connected' ? 'Start Game' : 'Connecting...' }}
+      {{ wsStatus === 'connected' ? '开始游戏' : '连接中...' }}
     </button>
   </div>
 </template>

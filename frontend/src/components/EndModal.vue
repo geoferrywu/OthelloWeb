@@ -1,9 +1,9 @@
 <template>
   <div class="modal-overlay show">
     <div class="modal">
-      <h2>Game Over</h2>
+      <h2>对局结束</h2>
       <p>{{ message }}</p>
-      <button @click="$emit('restart')">Play Again</button>
+      <button @click="$emit('restart')">再来一局</button>
     </div>
   </div>
 </template>
@@ -20,9 +20,9 @@ defineEmits<{ (e: 'restart'): void }>()
 
 const message = computed(() => {
   const { winner, blackScore, whiteScore } = props.overData
-  if (winner === 'DRAW') return `${blackScore} : ${whiteScore} Draw`
-  if (winner === 'BLACK') return `Black ${blackScore} : ${whiteScore} White - Black wins`
-  return `White ${whiteScore} : ${blackScore} Black - White wins`
+  if (winner === 'DRAW') return `黑 ${blackScore} : ${whiteScore} 白，平局`
+  if (winner === 'BLACK') return `黑 ${blackScore} : ${whiteScore} 白，黑方获胜`
+  return `白 ${whiteScore} : ${blackScore} 黑，白方获胜`
 })
 </script>
 

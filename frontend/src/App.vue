@@ -3,7 +3,7 @@
     <h1>Othello</h1>
 
     <div v-if="wsStatus === 'connecting'" class="connecting">
-      <p>Connecting...</p>
+      <p>正在连接...</p>
     </div>
 
     <StartScreen
@@ -20,34 +20,37 @@
       />
 
       <div class="status">
-        <span v-if="passShown">{{ passColorName }} passed.</span>
+        <span v-if="passShown">{{ passColorName }}跳过</span>
         <span v-else-if="isThinking && wsCurrentPlayer === aiColor">
-          {{ currentPlayerName }} thinking...
+          {{ currentPlayerName }}思考中...
         </span>
-        <span v-else>{{ currentPlayerName }} to move</span>
+        <span v-else>{{ currentPlayerName }}落子</span>
       </div>
 
-      <GameBoard
-        :board="currentBoard"
-        :currentPlayer="wsCurrentPlayer"
-        :playerColor="playerColor"
-        :showHint="showHint"
-        :isPlayerTurn="isPlayerTurn"
-        :lastMove="lastMovePos"
-        :flippedCells="flippedCells"
-        @place="handlePlace"
-      />
+      <template v-if="boardReady">
+        <GameBoard
+          :board="currentBoard"
+          :currentPlayer="wsCurrentPlayer"
+          :playerColor="playerColor"
+          :showHint="showHint"
+          :isPlayerTurn="isPlayerTurn"
+          :lastMove="lastMovePos"
+          :flippedCells="flippedCells"
+          @place="handlePlace"
+        />
 
-      <ControlPanel
-        :canUndo="canUndo"
-        :gameOver="wsGameOver"
-        :showHistory="showHistory"
-        :showHint="showHint"
-        @undo="handleUndo"
-        @toggleHistory="showHistory = !showHistory"
-        @toggleHint="showHint = !showHint"
-        @back="handleBack"
-      />
+        <ControlPanel
+          :canUndo="canUndo"
+          :gameOver="wsGameOver"
+          :showHistory="showHistory"
+          :showHint="showHint"
+          @undo="handleUndo"
+          @toggleHistory="showHistory = !showHistory"
+          @toggleHint="showHint = !showHint"
+          @back="handleBack"
+        />
+      </template>
+      <div v-else class="status">棋盘数据加载中...</div>
 
       <HistoryPanel
         v-if="showHistory"
@@ -83,6 +86,7 @@ const {
   gameOver: wsGameOver,
   overData,
   passEvent,
+  flippedCells: wsFlippedCells,
   connect,
   joinGame,
   sendMove,
@@ -105,10 +109,12 @@ const BLACK: Player = 1
 const WHITE: Player = 2
 
 const currentBoard = computed(() => wsBoard.value || [])
+const boardReady = computed(() => currentBoard.value.length > 0)
 
 const moveLog = computed(() => {
   return (wsHistory.value || []).map((m) => {
-    const text = m.position ? coord(m.position.r, m.position.c) : 'PASS'
+    const side = m.player === BLACK ? '黑' : '白'
+    const text = m.position ? `${side}:${coord(m.position.r, m.position.c)}` : `${side}跳过`
     return { color: m.player, text, pass: m.position === null }
   })
 })
@@ -118,15 +124,18 @@ const isPlayerTurn = computed(() => {
 })
 
 const canUndo = computed(() => {
+  if (gameMode.value === 'PVE') {
+    return (wsHistory.value || []).length >= 1 && !wsGameOver.value
+  }
   return (wsHistory.value || []).length >= 2 && !wsGameOver.value && isPlayerTurn.value
 })
 
 const currentPlayerName = computed(() => {
-  return wsCurrentPlayer.value === BLACK ? 'Black' : 'White'
+  return wsCurrentPlayer.value === BLACK ? '黑方' : '白方'
 })
 
 const passColorName = computed(() => {
-  return wsCurrentPlayer.value === BLACK ? 'White' : 'Black'
+  return wsCurrentPlayer.value === BLACK ? '白方' : '黑方'
 })
 
 function handleStart(mode: GameMode, color: Color, size: number) {
@@ -152,6 +161,8 @@ function handleBack() {
   gameStarted.value = false
   showHistory.value = false
   showHint.value = false
+  lastMovePos.value = null
+  flippedCells.value = []
 }
 
 function handleRestart() {
@@ -185,6 +196,10 @@ watch(wsCurrentPlayer, (val) => {
 
 watch(wsBoard, () => {
   if (isThinking.value) isThinking.value = false
+})
+
+watch(wsFlippedCells, (cells) => {
+  flippedCells.value = cells || []
 })
 </script>
 

@@ -38,6 +38,7 @@ export interface AIMoveData {
   flipped: Position[]
   board: Player[][]
   history: MoveRecord[]
+  currentPlayer?: Player
 }
 
 export interface GameOverData {

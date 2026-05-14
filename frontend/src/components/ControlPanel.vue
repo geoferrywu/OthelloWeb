@@ -1,13 +1,13 @@
 <template>
   <div class="btn-row">
-    <button :disabled="!canUndo || gameOver" @click="$emit('undo')">Undo</button>
+    <button :disabled="!canUndo || gameOver" @click="$emit('undo')">悔棋</button>
     <button @click="$emit('toggleHistory')">
-      {{ showHistory ? 'Hide History' : 'Show History' }}
+      {{ showHistory ? '隐藏记录' : '显示记录' }}
     </button>
     <button @click="$emit('toggleHint')">
-      Hint: {{ showHint ? 'On' : 'Off' }}
+      提示: {{ showHint ? '开' : '关' }}
     </button>
-    <button @click="$emit('back')">Back</button>
+    <button @click="$emit('back')">返回</button>
   </div>
 </template>
 

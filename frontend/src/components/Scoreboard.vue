@@ -2,11 +2,11 @@
   <div class="scoreboard">
     <div class="player-score" :class="{ active: currentPlayer === 1 }">
       <span class="disc-icon black"></span>
-      <span>Black <strong>{{ blackScore }}</strong></span>
+      <span>黑方 <strong>{{ blackScore }}</strong></span>
     </div>
     <div class="player-score" :class="{ active: currentPlayer === 2 }">
       <span class="disc-icon white"></span>
-      <span>White <strong>{{ whiteScore }}</strong></span>
+      <span>白方 <strong>{{ whiteScore }}</strong></span>
     </div>
   </div>
 </template>
