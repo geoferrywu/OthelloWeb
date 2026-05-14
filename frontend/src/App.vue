@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="container">
     <h1>Othello</h1>
 
@@ -28,16 +28,24 @@
       </div>
 
       <template v-if="boardReady">
-        <GameBoard
-          :board="currentBoard"
-          :currentPlayer="wsCurrentPlayer"
-          :playerColor="playerColor"
-          :showHint="showHint"
-          :isPlayerTurn="isPlayerTurn"
-          :lastMove="lastMovePos"
-          :flippedCells="flippedCells"
-          @place="handlePlace"
-        />
+        <div class="board-layout">
+          <aside class="side-info">
+            <h3>对弈双方</h3>
+            <p><strong>黑：</strong>{{ blackRole }}</p>
+            <p><strong>白：</strong>{{ whiteRole }}</p>
+          </aside>
+
+          <GameBoard
+            :board="currentBoard"
+            :currentPlayer="wsCurrentPlayer"
+            :playerColor="playerColor"
+            :showHint="showHint"
+            :isPlayerTurn="isPlayerTurn"
+            :lastMove="lastMovePos"
+            :flippedCells="flippedCells"
+            @place="handlePlace"
+          />
+        </div>
 
         <ControlPanel
           :canUndo="canUndo"
@@ -136,6 +144,16 @@ const currentPlayerName = computed(() => {
 
 const passColorName = computed(() => {
   return wsCurrentPlayer.value === BLACK ? '白方' : '黑方'
+})
+
+const blackRole = computed(() => {
+  if (gameMode.value === 'PVP') return '玩家'
+  return playerColor.value === BLACK ? '玩家' : 'AI'
+})
+
+const whiteRole = computed(() => {
+  if (gameMode.value === 'PVP') return '玩家'
+  return playerColor.value === WHITE ? '玩家' : 'AI'
 })
 
 function handleStart(mode: GameMode, color: Color, size: number) {
@@ -250,5 +268,44 @@ h1 {
   font-size: 1.1rem;
   min-height: 1.5em;
   text-align: center;
+}
+
+.board-layout {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.side-info {
+  position: absolute;
+  right: calc(50% + 210px);
+  top: 8px;
+  min-width: 128px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.07);
+  line-height: 1.7;
+}
+
+.side-info h3 {
+  font-size: 0.95rem;
+  margin-bottom: 6px;
+  color: #d8d8d8;
+}
+
+@media (max-width: 900px) {
+  .board-layout {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .side-info {
+    position: static;
+    width: 100%;
+    max-width: 460px;
+  }
 }
 </style>
