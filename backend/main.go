@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
@@ -531,8 +532,14 @@ func main() {
 		handleWS(hub, w, r)
 	})
 
-	log.Println("Othello backend starting on :8080")
-	if err := http.ListenAndServe(":8080", nil); err != nil {
+	port := os.Getenv("OTHELLO_BACKEND_PORT")
+	if port == "" {
+		port = "8088"
+	}
+
+	addr := ":" + port
+	log.Println("Othello backend starting on " + addr)
+	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatal(err)
 	}
 }

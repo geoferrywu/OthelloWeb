@@ -3,3 +3,5 @@ frontend/dist/
 backend/othello-backend.exe
 *.log
 *.tmp
+.gocache/
+logs/

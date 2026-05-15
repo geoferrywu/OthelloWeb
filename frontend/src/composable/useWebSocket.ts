@@ -49,14 +49,15 @@ export function useWebSocket(): UseWebSocketReturn {
 
     const protocol = location.protocol === 'https:' ? 'wss' : 'ws'
     const host = location.hostname
-    const port = location.port
+    const frontendPort = import.meta.env.VITE_FRONTEND_PORT
+    const backendPort = import.meta.env.VITE_BACKEND_PORT
 
-    // Vite dev server proxy mode (default :5173) can use same-origin /ws.
-    if (port === '5173') {
+    // Vite dev server proxy mode can use same-origin /ws.
+    if (String(location.port) === String(frontendPort)) {
       return `${protocol}://${location.host}/ws/game`
     }
     // Preview/static hosting should talk to backend directly.
-    return `${protocol}://${host}:8080/ws/game`
+    return `${protocol}://${host}:${backendPort}/ws/game`
   }
 
   function connect(onMessage?: (msg: WSMessage) => void) {

@@ -282,7 +282,7 @@ interface UseWebSocketReturn {
 
 ## 9. 验证方案
 
-1. **启动**: `go run main.go` 启动后端（默认 :8080），`npm run dev` 启动前端（默认 :5173）
+1. **启动**: `bin/start-all.sh`（Linux）或 `bin\start-all.cmd`（Windows）一键启动，端口配置见 `.env`
 2. **PvE 测试**: 选择 PvE 模式 → 验证开局 → 交替落子 → 验证 AI 回应 → 触发跳过 → 验证终局
 3. **PvP 测试**: 开两个浏览器窗口 → 分别加入同一房间 → 验证状态同步 → 断线测试
 4. **功能测试**: 悔棋、提示开关、历史记录显隐、棋盘大小切换
