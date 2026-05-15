@@ -1,10 +1,12 @@
-echo off
+:: This is a cmd file to stop service
+:: Created by user
+@echo off
 setlocal EnableDelayedExpansion
 
 set "BACKEND_TITLE=Othello Backend"
 set "FRONTEND_TITLE=Othello Frontend"
 
-@echo Stopping Othello services...
+echo Stopping Othello services...
 
 for %%P in (5173 8080) do (
   for /f "tokens=5" %%I in ('netstat -ano ^| findstr /r /c:":%%P .*LISTENING"') do (
