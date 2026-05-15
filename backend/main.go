@@ -114,6 +114,8 @@ func (c *Client) SendJSON(msg WSMessage) {
 	if err != nil {
 		return
 	}
+	log.Printf("[WS SEND] remote=%s session=%s color=%s payload=%s",
+		c.remoteAddr(), c.sessionID(), c.colorLabel(), string(data))
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.Conn.WriteMessage(websocket.TextMessage, data)
@@ -137,6 +139,8 @@ func handleWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 		return
 	}
+	log.Printf("[WS RECV] remote=%s session=%s color=%s payload=%s",
+		conn.RemoteAddr().String(), "-", "-", string(msg))
 
 	var wsMsg WSMessage
 	if err := json.Unmarshal(msg, &wsMsg); err != nil {
@@ -212,6 +216,8 @@ func (c *Client) readPump(hub *Hub) {
 		if err != nil {
 			break
 		}
+		log.Printf("[WS RECV] remote=%s session=%s color=%s payload=%s",
+			c.remoteAddr(), c.sessionID(), c.colorLabel(), string(msg))
 
 		var wsMsg WSMessage
 		if err := json.Unmarshal(msg, &wsMsg); err != nil {
@@ -486,6 +492,34 @@ func mustMarshal(v any) json.RawMessage {
 		return json.RawMessage(`{}`)
 	}
 	return data
+}
+
+func (c *Client) remoteAddr() string {
+	if c == nil || c.Conn == nil || c.Conn.RemoteAddr() == nil {
+		return "-"
+	}
+	return c.Conn.RemoteAddr().String()
+}
+
+func (c *Client) sessionID() string {
+	if c == nil || c.Session == nil {
+		return "-"
+	}
+	return c.Session.ID
+}
+
+func (c *Client) colorLabel() string {
+	if c == nil {
+		return "-"
+	}
+	switch c.Color {
+	case game.BLACK:
+		return "BLACK"
+	case game.WHITE:
+		return "WHITE"
+	default:
+		return "-"
+	}
 }
 
 func main() {
