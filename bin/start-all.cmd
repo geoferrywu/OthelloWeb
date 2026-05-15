@@ -1,4 +1,6 @@
-echo off
+:: This is a cmd file to start service
+:: Created by user
+@echo off
 setlocal
 
 set "ROOT=%~dp0..\\"
