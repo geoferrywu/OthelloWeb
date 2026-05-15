@@ -1,3 +1,4 @@
+echo off
 setlocal EnableDelayedExpansion
 
 set "BACKEND_TITLE=Othello Backend"
