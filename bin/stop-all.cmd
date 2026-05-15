@@ -1,1 +1,1 @@
-test2
+setlocal EnableDelayedExpansion
