@@ -19,6 +19,26 @@ if not exist "%CACHE_DIR%" mkdir "%CACHE_DIR%"
 echo Starting backend...
 start "Othello Backend" cmd /k "cd /d ""%ROOT%backend"" && set ""GOCACHE=%CACHE_DIR%"" && go run main.go"
 
+echo Waiting for backend to be ready on port %OTHELLO_BACKEND_PORT%...
+set "BACKEND_READY="
+for /l %%I in (1,1,60) do (
+  powershell -NoProfile -ExecutionPolicy Bypass -Command "try { $c = New-Object Net.Sockets.TcpClient; $c.Connect('127.0.0.1', %OTHELLO_BACKEND_PORT%); $c.Close(); exit 0 } catch { exit 1 }" >nul 2>&1
+  if !errorlevel! equ 0 (
+    set "BACKEND_READY=1"
+    goto :backend_ready
+  )
+  timeout /t 1 /nobreak >nul
+)
+
+:backend_ready
+if not defined BACKEND_READY (
+  echo Backend did not become ready within 60s.
+  echo Please check the backend window for errors.
+  exit /b 1
+)
+
+echo Backend is ready. Starting frontend...
+
 echo Starting frontend...
 start "Othello Frontend" cmd /k "cd /d ""%ROOT%frontend"" && npm run dev -- --host 0.0.0.0 --port %OTHELLO_FRONTEND_PORT%"
 

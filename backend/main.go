@@ -187,16 +187,24 @@ func (h *Hub) startOnlineTurnTimers(sessionID string) {
 		if s2.State.GameOver || !s2.Ready {
 			return
 		}
+		loser := s2.State.CurrentPlayer
+		winnerPlayer := loser.Opponent()
+		winner := "DRAW"
+		if winnerPlayer == game.BLACK {
+			winner = "BLACK"
+		} else if winnerPlayer == game.WHITE {
+			winner = "WHITE"
+		}
 		s2.State.GameOver = true
 		black, white := s2.State.Score()
 		timeoutMsg := WSMessage{
 			Type: "GAME_OVER",
 			Data: mustMarshal(map[string]any{
-				"winner":     "DRAW",
+				"winner":     winner,
 				"blackScore": black,
 				"whiteScore": white,
 				"reason":     "TIMEOUT",
-				"message":    "超过60秒未落子，对局结束",
+				"message":    "超时判负，对局结束",
 			}),
 		}
 		h.Broadcast(s2.State, &Client{Session: s2}, timeoutMsg)

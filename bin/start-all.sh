@@ -24,6 +24,23 @@ BACKEND_PID=$!
 echo "Backend (port $OTHELLO_BACKEND_PORT) PID: $BACKEND_PID"
 echo "$BACKEND_PID" >"$ROOT/.backend.pid"
 
+echo "Waiting for backend to be ready on port $OTHELLO_BACKEND_PORT..."
+backend_ready=false
+for _ in {1..60}; do
+  if (echo >"/dev/tcp/127.0.0.1/$OTHELLO_BACKEND_PORT") >/dev/null 2>&1; then
+    backend_ready=true
+    break
+  fi
+  sleep 1
+done
+
+if [ "$backend_ready" != true ]; then
+  echo "Backend did not become ready within 60s. Check $LOG_DIR/backend.log"
+  exit 1
+fi
+
+echo "Backend is ready. Starting frontend..."
+
 # Start frontend
 (
   cd "$ROOT/frontend"

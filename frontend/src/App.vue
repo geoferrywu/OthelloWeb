@@ -12,7 +12,7 @@
 
         <div class="status">
           <span v-if="isOnlineMode && !onlineReady">{{ onlineWaitingText }}</span>
-          <span v-else-if="isOnlineMode && countdown > 0">请在 {{ countdown }} 秒内落子</span>
+          <span v-else-if="isOnlineMode && countdown > 0">{{ onlineCountdownText }}</span>
           <span v-else-if="passShown">{{ passColorName }}跳过</span>
           <span v-else-if="isThinking && wsCurrentPlayer === aiColor">{{ currentPlayerName }}思考中...</span>
           <span v-else>{{ currentPlayerName }}落子</span>
@@ -131,9 +131,20 @@ const onlineWaitingText = computed(() => {
   const code = init.value?.online?.pairCode || pairCode.value
   return `${role}（配对码 ${code}），等待对手加入...`
 })
+const onlineCountdownText = computed(() => {
+  if (!isOnlineMode.value || countdown.value <= 0) return ''
+  const isMyTurn = wsCurrentPlayer.value === playerColor.value
+  return isMyTurn ? `请在 ${countdown.value} 秒内落子` : `对手剩余 ${countdown.value} 秒`
+})
 
-const blackRole = computed(() => init.value?.players?.BLACK || (gameMode.value === 'PVP' ? '玩家' : (playerColor.value === BLACK ? '玩家' : 'AI')))
-const whiteRole = computed(() => init.value?.players?.WHITE || (gameMode.value === 'PVP' ? '玩家' : (playerColor.value === WHITE ? '玩家' : 'AI')))
+const blackRole = computed(() => {
+  if (gameMode.value === 'PVP_ONLINE') return playerColor.value === BLACK ? '你' : '对手'
+  return init.value?.players?.BLACK || (gameMode.value === 'PVP' ? '玩家' : (playerColor.value === BLACK ? '玩家' : 'AI'))
+})
+const whiteRole = computed(() => {
+  if (gameMode.value === 'PVP_ONLINE') return playerColor.value === WHITE ? '你' : '对手'
+  return init.value?.players?.WHITE || (gameMode.value === 'PVP' ? '玩家' : (playerColor.value === WHITE ? '玩家' : 'AI'))
+})
 
 function handleStart(mode: GameMode, color: Color, size: number, selectedAlgorithm: string, selectedLevel: AILevel, selectedPairCode?: string) {
   gameMode.value = mode

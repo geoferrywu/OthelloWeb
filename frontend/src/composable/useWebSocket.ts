@@ -38,6 +38,7 @@ interface UseWebSocketReturn {
 }
 
 let ws: WebSocket | null = null
+let countdownTimer: number | null = null
 
 export function useWebSocket(): UseWebSocketReturn {
   const status = ref<ConnectionStatus>('disconnected') as Ref<ConnectionStatus>
@@ -52,6 +53,27 @@ export function useWebSocket(): UseWebSocketReturn {
   const hintMove = ref<Position | null>(null)
   const errorMessage = ref('')
   const countdown = ref(0)
+
+  function stopCountdown() {
+    if (countdownTimer !== null) {
+      window.clearInterval(countdownTimer)
+      countdownTimer = null
+    }
+  }
+
+  function startCountdown(from: number) {
+    stopCountdown()
+    countdown.value = Math.max(0, from)
+    if (countdown.value <= 0) return
+    countdownTimer = window.setInterval(() => {
+      if (countdown.value <= 0) {
+        stopCountdown()
+        return
+      }
+      countdown.value -= 1
+      if (countdown.value <= 0) stopCountdown()
+    }, 1000)
+  }
 
   function resolveWsUrl(): string {
     const envUrl = import.meta.env.VITE_WS_URL as string | undefined
@@ -96,6 +118,7 @@ export function useWebSocket(): UseWebSocketReturn {
         passEvent.value = false
         flippedCells.value = []
         hintMove.value = null
+        stopCountdown()
         countdown.value = 0
         break
       }
@@ -107,11 +130,13 @@ export function useWebSocket(): UseWebSocketReturn {
         passEvent.value = !!data.pass
         flippedCells.value = data.flipped || []
         hintMove.value = null
+        stopCountdown()
+        countdown.value = 0
         break
       }
       case 'COUNTDOWN': {
         const data = msg.data as unknown as { seconds?: number }
-        countdown.value = Math.max(0, data.seconds || 0)
+        startCountdown(Math.max(0, data.seconds || 0))
         break
       }
       case 'AI_MOVE': {
@@ -123,6 +148,8 @@ export function useWebSocket(): UseWebSocketReturn {
         passEvent.value = false
         flippedCells.value = data.flipped || []
         hintMove.value = null
+        stopCountdown()
+        countdown.value = 0
         break
       }
       case 'HINT_RESULT': {
@@ -133,6 +160,7 @@ export function useWebSocket(): UseWebSocketReturn {
       case 'GAME_OVER': {
         overData.value = msg.data as unknown as GameOverData
         gameOver.value = true
+        stopCountdown()
         countdown.value = 0
         break
       }
@@ -159,6 +187,7 @@ export function useWebSocket(): UseWebSocketReturn {
     status.value = 'disconnected'
 
     errorMessage.value = ''
+    stopCountdown()
     countdown.value = 0
     connect()
     const checkOpen = () => {
@@ -194,6 +223,8 @@ export function useWebSocket(): UseWebSocketReturn {
       ws = null
     }
     status.value = 'disconnected'
+    stopCountdown()
+    countdown.value = 0
   }
 
   return {
