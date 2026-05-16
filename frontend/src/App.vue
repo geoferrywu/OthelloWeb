@@ -61,6 +61,7 @@
       </section>
 
       <EndModal v-if="wsGameOver && overData && !isOnlineMode" :overData="overData" @restart="handleRestart" />
+      <EndModal v-if="wsGameOver && overData && isOnlineMode && overData.reason === 'NORMAL'" :overData="overData" @restart="handleBack" />
     </template>
   </div>
 </template>
@@ -187,9 +188,18 @@ watch(errorMessage, (msg) => {
 })
 watch(wsGameOver, (v) => {
   if (!v || !isOnlineMode.value) return
+  const reason = overData.value?.reason
+  if (reason === 'NORMAL') return
   const message = overData.value?.message
   if (message) window.alert(message)
   handleBack()
+})
+watch(init, (val) => {
+  if (!val || !isOnlineMode.value) return
+  if (val.selfColor === BLACK || val.selfColor === WHITE) {
+    playerColor.value = val.selfColor
+    aiColor.value = val.selfColor === BLACK ? WHITE : BLACK
+  }
 })
 watch(wsBoard, () => { if (isThinking.value) isThinking.value = false })
 watch(wsFlippedCells, (cells) => { flippedCells.value = cells || [] })

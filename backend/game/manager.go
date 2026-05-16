@@ -197,3 +197,13 @@ func (m *Manager) DeleteSession(id string) {
 	}
 	delete(m.sessions, id)
 }
+
+func (m *Manager) InvalidateOnlineCodeBySessionID(id string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for code, sessionID := range m.pvpOnlineByCode {
+		if sessionID == id {
+			delete(m.pvpOnlineByCode, code)
+		}
+	}
+}

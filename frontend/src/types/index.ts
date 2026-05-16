@@ -19,6 +19,7 @@ export interface GameInitData {
   gameId: string
   board: Player[][]
   currentPlayer: Player
+  selfColor?: Player
   size: number
   history: MoveRecord[]
   players: { BLACK: string; WHITE: string }

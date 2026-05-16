@@ -94,6 +94,7 @@ func (h *Hub) sendInit(client *Client) {
 		"gameId":        s.ID,
 		"board":         s.State.Board,
 		"currentPlayer": int(s.State.CurrentPlayer),
+		"selfColor":     int(client.Color),
 		"size":          s.State.Size,
 		"history":       s.State.History,
 		"players": map[string]string{
@@ -200,6 +201,7 @@ func (h *Hub) startOnlineTurnTimers(sessionID string) {
 		}
 		h.Broadcast(s2.State, &Client{Session: s2}, timeoutMsg)
 		h.stopOnlineTurnTimers(sessionID)
+		h.Manager.InvalidateOnlineCodeBySessionID(sessionID)
 	})
 
 	h.mu.Lock()
@@ -233,6 +235,7 @@ func (h *Hub) handleDisconnect(client *Client) {
 		}),
 	})
 	h.stopOnlineTurnTimers(client.Session.ID)
+	h.Manager.InvalidateOnlineCodeBySessionID(client.Session.ID)
 }
 
 // Broadcast sends a message to all clients in a session except the sender.
@@ -724,6 +727,7 @@ func (c *Client) handleGameOver(hub *Hub) {
 	hub.Broadcast(gs, c, overMsg)
 	if c.Session.Mode == game.ModePVPOnline {
 		hub.stopOnlineTurnTimers(c.Session.ID)
+		hub.Manager.InvalidateOnlineCodeBySessionID(c.Session.ID)
 	}
 }
 
