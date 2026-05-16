@@ -37,14 +37,39 @@ if not defined BACKEND_READY (
   exit /b 1
 )
 
-echo Backend is ready. Starting frontend...
+if "%OTHELLO_FRONTEND_REACT_PORT%"=="" set "OTHELLO_FRONTEND_REACT_PORT=5174"
 
-echo Starting frontend...
-start "Othello Frontend" cmd /k "cd /d ""%ROOT%frontend"" && npm run dev -- --host 0.0.0.0 --port %OTHELLO_FRONTEND_PORT%"
+echo Backend is ready.
+echo.
+echo Select frontend to start:
+echo [1] Vue frontend (frontend, port %OTHELLO_FRONTEND_PORT%)
+echo [2] React frontend (frontend_rct, port %OTHELLO_FRONTEND_REACT_PORT%)
+echo [3] Both (default)
+set "START_TARGET=3"
+set /p START_TARGET=Enter choice (1/2/3):
+if "%START_TARGET%"=="" set "START_TARGET=3"
+
+if "%START_TARGET%"=="1" (
+  echo Starting Vue frontend...
+  start "Othello Frontend (Vue)" cmd /k "cd /d ""%ROOT%frontend"" && npm run dev -- --host 0.0.0.0 --port %OTHELLO_FRONTEND_PORT%"
+)
+
+if "%START_TARGET%"=="2" (
+  echo Starting React frontend...
+  start "Othello Frontend (React)" cmd /k "cd /d ""%ROOT%frontend_rct"" && npm run dev -- --host 0.0.0.0 --port %OTHELLO_FRONTEND_REACT_PORT%"
+)
+
+if "%START_TARGET%"=="3" (
+  echo Starting Vue frontend...
+  start "Othello Frontend (Vue)" cmd /k "cd /d ""%ROOT%frontend"" && npm run dev -- --host 0.0.0.0 --port %OTHELLO_FRONTEND_PORT%"
+  echo Starting React frontend...
+  start "Othello Frontend (React)" cmd /k "cd /d ""%ROOT%frontend_rct"" && npm run dev -- --host 0.0.0.0 --port %OTHELLO_FRONTEND_REACT_PORT%"
+)
 
 echo.
 echo Othello is starting:
-echo - Frontend: http://localhost:%OTHELLO_FRONTEND_PORT%
+echo - Vue Frontend: http://localhost:%OTHELLO_FRONTEND_PORT%
+echo - React Frontend: http://localhost:%OTHELLO_FRONTEND_REACT_PORT%
 echo - Backend WebSocket: ws://localhost:%OTHELLO_BACKEND_PORT%/ws/game
 echo.
 echo Keep the two opened windows running while you play.

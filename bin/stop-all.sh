@@ -7,11 +7,12 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 set -a
 source "$ROOT/.env"
 set +a
+OTHELLO_FRONTEND_REACT_PORT="${OTHELLO_FRONTEND_REACT_PORT:-5174}"
 
 echo "Stopping Othello services..."
 
 # Kill by saved PIDs
-for pidfile in .backend.pid .frontend.pid; do
+for pidfile in .backend.pid .frontend.pid .frontend_rct.pid; do
   pidfile_path="$ROOT/$pidfile"
   if [ -f "$pidfile_path" ]; then
     pid=$(cat "$pidfile_path")
@@ -25,7 +26,7 @@ for pidfile in .backend.pid .frontend.pid; do
 done
 
 # Also kill any remaining processes on the relevant ports
-for port in "$OTHELLO_FRONTEND_PORT" "$OTHELLO_BACKEND_PORT"; do
+for port in "$OTHELLO_FRONTEND_PORT" "$OTHELLO_FRONTEND_REACT_PORT" "$OTHELLO_BACKEND_PORT"; do
   pids=$(lsof -ti :"$port" 2>/dev/null || true)
   if [ -n "$pids" ]; then
     echo "$pids" | xargs kill 2>/dev/null || true
