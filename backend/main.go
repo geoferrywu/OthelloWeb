@@ -292,23 +292,28 @@ func (c *Client) handleMove(hub *Hub, data json.RawMessage) {
 	}
 
 	gs := c.Session.State
-	if gs.CurrentPlayer != c.Color {
+	movePlayer := c.Color
+	if c.Session.Mode == game.ModePVP {
+		// Local PvP allows one client to alternately play both sides.
+		movePlayer = gs.CurrentPlayer
+	}
+	if gs.CurrentPlayer != movePlayer {
 		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Not your turn"})})
 		return
 	}
 
-	flips, ok := gs.DoMove(moveData.R, moveData.C, c.Color)
+	flips, ok := gs.DoMove(moveData.R, moveData.C, movePlayer)
 	if !ok {
 		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Invalid move"})})
 		return
 	}
-	if hintPos := c.Session.LastHint[c.Color]; hintPos != nil && hintPos.R == moveData.R && hintPos.C == moveData.C {
+	if hintPos := c.Session.LastHint[movePlayer]; hintPos != nil && hintPos.R == moveData.R && hintPos.C == moveData.C {
 		last := len(gs.History) - 1
 		if last >= 0 {
-			gs.History[last].HintTag = string(c.Session.HintSettings[c.Color].Algorithm) + "_" + string(c.Session.HintSettings[c.Color].Level)
+			gs.History[last].HintTag = string(c.Session.HintSettings[movePlayer].Algorithm) + "_" + string(c.Session.HintSettings[movePlayer].Level)
 		}
 	}
-	c.Session.LastHint[c.Color] = nil
+	c.Session.LastHint[movePlayer] = nil
 
 	// Send STATE back to all clients in session
 	stateMsg := WSMessage{
@@ -386,18 +391,22 @@ func (c *Client) handleHint(data json.RawMessage) {
 		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Game is over"})})
 		return
 	}
-	alg := c.Session.HintSettings[c.Color].Algorithm
-	lv := c.Session.HintSettings[c.Color].Level
+	hintPlayer := c.Color
+	if c.Session.Mode == game.ModePVP {
+		hintPlayer = c.Session.State.CurrentPlayer
+	}
+	alg := c.Session.HintSettings[hintPlayer].Algorithm
+	lv := c.Session.HintSettings[hintPlayer].Level
 	if hintData.Algorithm != "" {
 		alg = game.ParseAlgorithmName(hintData.Algorithm)
 	}
 	if hintData.Level != "" {
 		lv = game.ParseLevel(hintData.Level)
 	}
-	c.Session.HintSettings[c.Color] = game.HintSettings{Algorithm: alg, Level: lv}
+	c.Session.HintSettings[hintPlayer] = game.HintSettings{Algorithm: alg, Level: lv}
 	engine := game.NewHintEngine(c.Session.State.Size, alg)
-	best := engine.BestMove(c.Session.State, c.Color, lv)
-	c.Session.LastHint[c.Color] = best
+	best := engine.BestMove(c.Session.State, hintPlayer, lv)
+	c.Session.LastHint[hintPlayer] = best
 	c.SendJSON(WSMessage{
 		Type: "HINT_RESULT",
 		Data: mustMarshal(map[string]any{

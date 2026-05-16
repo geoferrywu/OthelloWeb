@@ -44,7 +44,6 @@
             <GameBoard
               :board="currentBoard"
               :currentPlayer="wsCurrentPlayer"
-              :playerColor="playerColor"
               :showHint="showHint"
               :showHistory="showHistory"
               :isPlayerTurn="isPlayerTurn"
@@ -108,7 +107,11 @@ const moveLog = computed(() => {
   })
 })
 
-const isPlayerTurn = computed(() => wsCurrentPlayer.value === playerColor.value && !wsGameOver.value)
+const isPlayerTurn = computed(() => {
+  if (wsGameOver.value) return false
+  if (gameMode.value === 'PVP') return true
+  return wsCurrentPlayer.value === playerColor.value
+})
 const canUndo = computed(() => gameMode.value === 'PVE' ? (wsHistory.value || []).length >= 1 && !wsGameOver.value : (wsHistory.value || []).length >= 2 && !wsGameOver.value && isPlayerTurn.value)
 const currentPlayerName = computed(() => wsCurrentPlayer.value === BLACK ? '黑方' : '白方')
 const passColorName = computed(() => wsCurrentPlayer.value === BLACK ? '白方' : '黑方')
@@ -158,7 +161,7 @@ watch(passEvent, (val) => { if (val) { passShown.value = true; setTimeout(() => 
 watch(wsCurrentPlayer, (val) => {
   if (gameMode.value === 'PVE' && val === aiColor.value && !wsGameOver.value) isThinking.value = true
   else isThinking.value = false
-  if (showHint.value && val === playerColor.value && !wsGameOver.value) requestHint(hintAlgorithm.value, hintLevel.value)
+  if (showHint.value && isPlayerTurn.value && !wsGameOver.value) requestHint(hintAlgorithm.value, hintLevel.value)
 })
 watch(wsBoard, () => { if (isThinking.value) isThinking.value = false })
 watch(wsFlippedCells, (cells) => { flippedCells.value = cells || [] })

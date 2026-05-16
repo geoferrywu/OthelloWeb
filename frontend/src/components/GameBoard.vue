@@ -37,7 +37,6 @@ import type { Player, Position } from '../types'
 const props = defineProps<{
   board: number[][]
   currentPlayer: number
-  playerColor: Player
   showHint: boolean
   showHistory: boolean
   isPlayerTurn: boolean
@@ -93,7 +92,7 @@ watch(() => props.historyEntries.length, async () => {
 
 const validMovesSet = computed(() => {
   if (!boardReady.value) return new Set<string>()
-  if (props.currentPlayer !== props.playerColor) return new Set<string>()
+  if (!props.isPlayerTurn) return new Set<string>()
   const moves = new Set<string>()
   const s = size.value
   const board = props.board
