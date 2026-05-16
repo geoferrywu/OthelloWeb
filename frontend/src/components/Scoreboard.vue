@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="scoreboard">
     <div class="player-score" :class="{ active: currentPlayer === 1 }">
       <span class="disc-icon black"></span>
@@ -42,35 +42,10 @@ const whiteScore = computed(() => {
 </script>
 
 <style scoped>
-.scoreboard {
-  display: flex;
-  gap: 40px;
-  align-items: center;
-  font-size: 1.1rem;
-}
-
-.player-score {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.05);
-  transition: background 0.3s, box-shadow 0.3s;
-}
-
-.player-score.active {
-  background: rgba(255, 255, 255, 0.12);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
-}
-
-.disc-icon {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: 2px solid #555;
-}
-
+.scoreboard { display: flex; gap: 40px; align-items: center; font-size: 1.1rem; }
+.player-score { display: flex; align-items: center; gap: 10px; padding: 8px 16px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); transition: background 0.3s, box-shadow 0.3s; }
+.player-score.active { background: rgba(255, 255, 255, 0.12); box-shadow: 0 0 12px rgba(255, 255, 255, 0.15); }
+.disc-icon { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #555; }
 .disc-icon.black { background: #222; border-color: #444; }
 .disc-icon.white { background: #f0f0f0; border-color: #ccc; }
 </style>

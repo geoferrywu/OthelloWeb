@@ -19,9 +19,9 @@ func (p Player) Opponent() Player {
 func (p Player) String() string {
 	switch p {
 	case BLACK:
-		return "黑"
+		return "BLACK"
 	case WHITE:
-		return "白"
+		return "WHITE"
 	default:
 		return "-"
 	}
@@ -38,6 +38,7 @@ type Move struct {
 	Player   Player     `json:"player"`
 	Position *Position  `json:"position"` // nil means pass
 	Flipped  []Position `json:"flipped"`
+	HintTag  string     `json:"hintTag,omitempty"`
 }
 
 // GameState holds the complete state of an Othello game.

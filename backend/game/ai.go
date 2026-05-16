@@ -1,284 +1,116 @@
 package game
 
-import "math"
+// AIAlgorithmName 使用中文短名作为算法标识，前后端统一用该值切换算法。
+type AIAlgorithmName string
 
-// AI holds the AI evaluation context.
-type AI struct {
-	weights [][]int
-	depth   int
-	Color   Player
+const (
+	AlgorithmEnhanced AIAlgorithmName = "增强博弈"
+	AlgorithmPVS      AIAlgorithmName = "主线剪枝"
+	AlgorithmMCTS     AIAlgorithmName = "蒙特树搜"
+	AlgorithmHybrid   AIAlgorithmName = "混合博弈"
+)
+
+// AILevel 统一三档难度。
+type AILevel string
+
+const (
+	LevelEasy   AILevel = "easy"
+	LevelNormal AILevel = "normal"
+	LevelHard   AILevel = "hard"
+)
+
+// AIProfile 提供算法代码（用于历史记录后缀和面板显示）。
+type AIProfile struct {
+	Name AIAlgorithmName `json:"name"`
+	Code string          `json:"code"`
 }
 
-// NewAI creates an AI instance for a given board size and player color.
-func NewAI(size int, color Player, depth int) *AI {
-	return &AI{
-		weights: weightMatrix(size),
-		depth:   depth,
-		Color:   color,
+var algorithmProfiles = map[AIAlgorithmName]AIProfile{
+	AlgorithmEnhanced: {Name: AlgorithmEnhanced, Code: "abx"},
+	AlgorithmPVS:      {Name: AlgorithmPVS, Code: "pvs"},
+	AlgorithmMCTS:     {Name: AlgorithmMCTS, Code: "mcts"},
+	AlgorithmHybrid:   {Name: AlgorithmHybrid, Code: "mix"},
+}
+
+func ParseAlgorithmName(name string) AIAlgorithmName {
+	a := AIAlgorithmName(name)
+	if _, ok := algorithmProfiles[a]; ok {
+		return a
 	}
+	return AlgorithmEnhanced
 }
 
-// AIDepth returns the recommended search depth for a board size.
-func AIDepth(size int) int {
-	switch {
-	case size <= 6:
-		return 6
-	case size <= 8:
-		return 4
+func ParseLevel(level string) AILevel {
+	l := AILevel(level)
+	switch l {
+	case LevelEasy, LevelNormal, LevelHard:
+		return l
 	default:
-		return 3
+		return LevelNormal
 	}
 }
 
-// FindBestMove returns the best move position for the AI's color.
+func AlgorithmProfile(name AIAlgorithmName) AIProfile {
+	if p, ok := algorithmProfiles[name]; ok {
+		return p
+	}
+	return algorithmProfiles[AlgorithmEnhanced]
+}
+
+// AIStrategy 定义统一算法接口，所有AI策略都通过该接口提供最佳落子。
+type AIStrategy interface {
+	BestMove(gs *GameState, color Player, level AILevel) *Position
+}
+
+// AI 保存对局内锁定的算法与等级配置（开局后不再改变）。
+type AI struct {
+	Color     Player
+	Algorithm AIAlgorithmName
+	Level     AILevel
+	strategy  AIStrategy
+}
+
+func NewAI(size int, color Player, algorithm AIAlgorithmName, level AILevel) *AI {
+	return &AI{
+		Color:     color,
+		Algorithm: algorithm,
+		Level:     level,
+		strategy:  NewAIStrategyFactory(size).Create(algorithm),
+	}
+}
+
 func (ai *AI) FindBestMove(gs *GameState) *Position {
-	moves := gs.ValidMoves(ai.Color)
-	if len(moves) == 0 {
+	if ai == nil || ai.strategy == nil {
 		return nil
 	}
-
-	bestScore := math.MinInt64
-	var bestPos *Position
-
-	for key, flips := range moves {
-		r, c := parseKey(key)
-		nb := cloneBoard(gs)
-		nb[r][c] = ai.Color
-		for _, f := range flips {
-			nb[f.R][f.C] = ai.Color
-		}
-
-		score := ai.minimax(nb, ai.depth-1, math.MinInt64, math.MaxInt64, false)
-		if score > bestScore {
-			bestScore = score
-			bestPos = &Position{R: r, C: c}
-		}
-	}
-
-	return bestPos
+	return ai.strategy.BestMove(gs, ai.Color, ai.Level)
 }
 
-// evaluate scores a board from the AI's perspective.
-func (ai *AI) evaluate(board [][]Player, size int) int {
-	score := 0
-	for r := 0; r < size; r++ {
-		for c := 0; c < size; c++ {
-			if board[r][c] == ai.Color {
-				score += ai.weights[r][c]
-			} else if board[r][c] != EMPTY {
-				score -= ai.weights[r][c]
-			}
-		}
-	}
-	return score
+// NewHintEngine 为提示功能创建独立策略实例。HINT 走这里，不影响对局AI配置。
+func NewHintEngine(size int, algorithm AIAlgorithmName) AIStrategy {
+	return NewAIStrategyFactory(size).Create(algorithm)
 }
 
-func (ai *AI) minimax(board [][]Player, depth int, alpha, beta int, maximizing bool) int {
-	size := len(board)
-
-	// Determine current player
-	var currentPlayer Player
-	if maximizing {
-		currentPlayer = ai.Color
-	} else {
-		currentPlayer = ai.Color.Opponent()
-	}
-
-	moves := validMovesOnBoard(board, size, currentPlayer)
-	keys := make([]string, 0, len(moves))
-	for k := range moves {
-		keys = append(keys, k)
-	}
-
-	if depth == 0 || len(keys) == 0 {
-		// Check if game is truly over (neither player can move)
-		nextPlayer := currentPlayer.Opponent()
-		if len(keys) == 0 && len(validMovesOnBoard(board, size, nextPlayer)) == 0 {
-			black, white := 0, 0
-			for r := 0; r < size; r++ {
-				for c := 0; c < size; c++ {
-					if board[r][c] == BLACK {
-						black++
-					} else if board[r][c] == WHITE {
-						white++
-					}
-				}
-			}
-			diff := black - white
-			if ai.Color == BLACK {
-				return diff * 100
-			}
-			return -diff * 100
-		}
-		return ai.evaluate(board, size)
-	}
-
-	// Sort by flip count for better pruning
-	sortByFlips(keys, moves)
-
-	if maximizing {
-		best := math.MinInt64
-		for _, key := range keys {
-			r, c := parseKey(key)
-			nb := cloneBoardRaw(board, size)
-			for _, f := range moves[key] {
-				nb[f.R][f.C] = ai.Color
-			}
-			nb[r][c] = ai.Color
-			best = maxInt(best, ai.minimax(nb, depth-1, alpha, beta, false))
-			alpha = maxInt(alpha, best)
-			if alpha >= beta {
-				break
-			}
-		}
-		return best
-	} else {
-		best := math.MaxInt64
-		opp := ai.Color.Opponent()
-		for _, key := range keys {
-			r, c := parseKey(key)
-			nb := cloneBoardRaw(board, size)
-			for _, f := range moves[key] {
-				nb[f.R][f.C] = opp
-			}
-			nb[r][c] = opp
-			best = minInt(best, ai.minimax(nb, depth-1, alpha, beta, true))
-			beta = minInt(beta, best)
-			if alpha >= beta {
-				break
-			}
-		}
-		return best
-	}
+type AIStrategyFactory struct {
+	size int
 }
 
-// weightMatrix creates a positional weight matrix.
-func weightMatrix(size int) [][]int {
-	w := make([][]int, size)
-	for i := range w {
-		w[i] = make([]int, size)
-	}
-
-	edge := size - 1
-
-	// Corner bonus
-	w[0][0] = 120
-	w[0][edge] = 120
-	w[edge][0] = 120
-	w[edge][edge] = 120
-
-	// Near-corner penalty
-	nearCorners := [][2]int{
-		{0, 1}, {1, 0}, {1, 1},
-		{0, edge - 1}, {1, edge - 1}, {1, edge},
-		{edge - 1, 0}, {edge, 1}, {edge - 1, 1},
-		{edge - 1, edge}, {edge, edge - 1}, {edge - 1, edge - 1},
-	}
-	for _, nc := range nearCorners {
-		if nc[0] >= 0 && nc[0] < size && nc[1] >= 0 && nc[1] < size {
-			w[nc[0]][nc[1]] = -40
-		}
-	}
-
-	// Edge bonus
-	for i := 1; i < size-1; i++ {
-		w[0][i] = 20
-		w[edge][i] = 20
-		w[i][0] = 20
-		w[i][edge] = 20
-	}
-
-	return w
+func NewAIStrategyFactory(size int) *AIStrategyFactory {
+	return &AIStrategyFactory{size: size}
 }
 
-func validMovesOnBoard(board [][]Player, size int, player Player) map[string][]Position {
-	dirs := [][2]int{
-		{-1, -1}, {-1, 0}, {-1, 1}, {0, -1}, {0, 1}, {1, -1}, {1, 0}, {1, 1},
+func (f *AIStrategyFactory) Create(name AIAlgorithmName) AIStrategy {
+	base := &searchStrategy{weights: weightMatrix(f.size), size: f.size}
+	switch name {
+	case AlgorithmPVS:
+		return &pvsStrategy{base: base}
+	case AlgorithmMCTS:
+		return newMCTSStrategy(base)
+	case AlgorithmHybrid:
+		return &hybridStrategy{base: base}
+	case AlgorithmEnhanced:
+		fallthrough
+	default:
+		return &enhancedABStrategy{base: base}
 	}
-	inBounds := func(r, c int) bool { return r >= 0 && r < size && c >= 0 && c < size }
-
-	moves := make(map[string][]Position)
-	for r := 0; r < size; r++ {
-		for c := 0; c < size; c++ {
-			if board[r][c] != EMPTY {
-				continue
-			}
-			var allFlips []Position
-			for _, d := range dirs {
-				nr, nc := r+d[0], c+d[1]
-				var flips []Position
-				opp := player.Opponent()
-				for inBounds(nr, nc) && board[nr][nc] == opp {
-					flips = append(flips, Position{R: nr, C: nc})
-					nr += d[0]
-					nc += d[1]
-				}
-				if len(flips) > 0 && inBounds(nr, nc) && board[nr][nc] == player {
-					allFlips = append(allFlips, flips...)
-				}
-			}
-			if len(allFlips) > 0 {
-				moves[posKey(r, c)] = allFlips
-			}
-		}
-	}
-	return moves
-}
-
-func cloneBoard(gs *GameState) [][]Player {
-	nb := make([][]Player, gs.Size)
-	for r := 0; r < gs.Size; r++ {
-		nb[r] = make([]Player, gs.Size)
-		copy(nb[r], gs.Board[r])
-	}
-	return nb
-}
-
-func cloneBoardRaw(board [][]Player, size int) [][]Player {
-	nb := make([][]Player, size)
-	for r := 0; r < size; r++ {
-		nb[r] = make([]Player, size)
-		copy(nb[r], board[r])
-	}
-	return nb
-}
-
-func parseKey(key string) (int, int) {
-	var r, c int
-	comma := -1
-	for i := 0; i < len(key); i++ {
-		if key[i] == ',' {
-			comma = i
-			break
-		}
-		r = r*10 + int(key[i]-'0')
-	}
-	for i := comma + 1; i < len(key); i++ {
-		c = c*10 + int(key[i]-'0')
-	}
-	return r, c
-}
-
-func sortByFlips(keys []string, moves map[string][]Position) {
-	for i := 0; i < len(keys)-1; i++ {
-		for j := i + 1; j < len(keys); j++ {
-			if len(moves[keys[j]]) > len(moves[keys[i]]) {
-				keys[i], keys[j] = keys[j], keys[i]
-			}
-		}
-	}
-}
-
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func minInt(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }

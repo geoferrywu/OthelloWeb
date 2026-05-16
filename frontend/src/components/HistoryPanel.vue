@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div ref="panelRef" class="history-panel" :style="panelStyle">
     <div class="history-header" @mousedown="startDrag">
       <h3>对局记录</h3>
@@ -79,8 +79,8 @@ watch(() => props.history.length, async () => {
   right: 20px;
   top: 100px;
   z-index: 100;
-  width: 150px;
-  max-height: 400px;
+  width: 300px;
+  height: 420px;
   background: #2a2a4a;
   border-radius: 10px;
   padding: 10px 8px;
@@ -125,6 +125,7 @@ watch(() => props.history.length, async () => {
 
 .history-list {
   overflow-y: auto;
+  min-height: 0;
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -134,9 +135,11 @@ watch(() => props.history.length, async () => {
 
 .history-item {
   font-size: 0.85rem;
+  line-height: 1.45;
   padding: 3px 6px;
   border-radius: 4px;
   white-space: nowrap;
+  overflow: visible;
   cursor: text;
   -webkit-user-select: text;
   user-select: text;
@@ -146,3 +149,4 @@ watch(() => props.history.length, async () => {
 .history-item.white-move { color: #ccc; }
 .history-item.pass { color: #777; font-style: italic; }
 </style>
+

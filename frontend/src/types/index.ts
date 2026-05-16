@@ -1,6 +1,7 @@
-export type Player = 0 | 1 | 2 // 0=EMPTY, 1=BLACK, 2=WHITE
+﻿export type Player = 0 | 1 | 2
 export type GameMode = 'PVE' | 'PVP'
 export type Color = 'BLACK' | 'WHITE'
+export type AILevel = 'easy' | 'normal' | 'hard'
 
 export interface Position {
   r: number
@@ -11,6 +12,7 @@ export interface MoveRecord {
   player: Player
   position: Position | null
   flipped: Position[]
+  hintTag?: string
 }
 
 export interface GameInitData {
@@ -20,6 +22,8 @@ export interface GameInitData {
   size: number
   history: MoveRecord[]
   players: { BLACK: string; WHITE: string }
+  aiSettings?: { algorithm: string; level: AILevel }
+  hintSettings?: { algorithm: string; level: AILevel }
 }
 
 export interface GameStateData {
@@ -41,6 +45,12 @@ export interface AIMoveData {
   currentPlayer?: Player
 }
 
+export interface HintResultData {
+  position: Position | null
+  algorithm: { name: string; code: string }
+  level: AILevel
+}
+
 export interface GameOverData {
   winner: 'BLACK' | 'WHITE' | 'DRAW'
   blackScore: number
@@ -58,3 +68,4 @@ export interface UIState {
   isThinking: boolean
   isConnecting: boolean
 }
+

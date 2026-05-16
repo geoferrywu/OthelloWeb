@@ -72,6 +72,18 @@ func (h *Hub) Run() {
 
 func (h *Hub) sendInit(client *Client) {
 	s := client.Session
+	blackLabel := playerLabel(s, game.BLACK)
+	whiteLabel := playerLabel(s, game.WHITE)
+	if s.Mode == game.ModePVE {
+		aiName := string(s.AISettings.Algorithm)
+		aiLevel := string(s.AISettings.Level)
+		if s.AI != nil && s.AI.Color == game.BLACK {
+			blackLabel = "AI(" + aiName + ", " + aiLevel + ")"
+		}
+		if s.AI != nil && s.AI.Color == game.WHITE {
+			whiteLabel = "AI(" + aiName + ", " + aiLevel + ")"
+		}
+	}
 	data := map[string]any{
 		"gameId":        s.ID,
 		"board":         s.State.Board,
@@ -79,8 +91,16 @@ func (h *Hub) sendInit(client *Client) {
 		"size":          s.State.Size,
 		"history":       s.State.History,
 		"players": map[string]string{
-			"BLACK": playerLabel(s, game.BLACK),
-			"WHITE": playerLabel(s, game.WHITE),
+			"BLACK": blackLabel,
+			"WHITE": whiteLabel,
+		},
+		"aiSettings": map[string]string{
+			"algorithm": string(s.AISettings.Algorithm),
+			"level":     string(s.AISettings.Level),
+		},
+		"hintSettings": map[string]string{
+			"algorithm": string(s.HintSettings[client.Color].Algorithm),
+			"level":     string(s.HintSettings[client.Color].Level),
 		},
 	}
 	msg := WSMessage{Type: "INIT", Data: mustMarshal(data)}
@@ -156,10 +176,12 @@ func handleWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	}
 
 	var joinData struct {
-		Mode     string `json:"mode"`
-		Color    string `json:"color"`
-		Size     int    `json:"size"`
-		GameID   string `json:"gameId,omitempty"`
+		Mode        string `json:"mode"`
+		Color       string `json:"color"`
+		Size        int    `json:"size"`
+		GameID      string `json:"gameId,omitempty"`
+		AIAlgorithm string `json:"aiAlgorithm,omitempty"`
+		AILevel     string `json:"aiLevel,omitempty"`
 	}
 	if err := json.Unmarshal(wsMsg.Data, &joinData); err != nil {
 		conn.Close()
@@ -181,12 +203,14 @@ func handleWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	if mode != game.ModePVE && mode != game.ModePVP {
 		mode = game.ModePVE
 	}
+	aiAlgorithm := game.ParseAlgorithmName(joinData.AIAlgorithm)
+	aiLevel := game.ParseLevel(joinData.AILevel)
 
 	var session *game.Session
 	if mode == game.ModePVP {
-		session = hub.Manager.JoinPvpSession(color, joinData.Size, joinData.GameID)
+		session = hub.Manager.JoinPvpSession(color, joinData.Size, joinData.GameID, aiAlgorithm, aiLevel)
 	} else {
-		session = hub.Manager.CreateSession(mode, color, joinData.Size)
+		session = hub.Manager.CreateSession(mode, color, joinData.Size, aiAlgorithm, aiLevel)
 	}
 
 	client.Session = session
@@ -248,6 +272,8 @@ func (c *Client) handleMessage(hub *Hub, msg WSMessage) {
 	switch msg.Type {
 	case "MOVE":
 		c.handleMove(hub, msg.Data)
+	case "HINT":
+		c.handleHint(msg.Data)
 	case "UNDO":
 		c.handleUndo(hub)
 	case "PING":
@@ -276,6 +302,13 @@ func (c *Client) handleMove(hub *Hub, data json.RawMessage) {
 		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Invalid move"})})
 		return
 	}
+	if hintPos := c.Session.LastHint[c.Color]; hintPos != nil && hintPos.R == moveData.R && hintPos.C == moveData.C {
+		last := len(gs.History) - 1
+		if last >= 0 {
+			gs.History[last].HintTag = string(c.Session.HintSettings[c.Color].Algorithm) + "_" + string(c.Session.HintSettings[c.Color].Level)
+		}
+	}
+	c.Session.LastHint[c.Color] = nil
 
 	// Send STATE back to all clients in session
 	stateMsg := WSMessage{
@@ -326,6 +359,7 @@ func (c *Client) handleUndo(hub *Hub) {
 
 	newGs := prefixStates[target]
 	*gs = *newGs
+	c.Session.LastHint[c.Color] = nil
 
 	undoMsg := WSMessage{
 		Type: "STATE",
@@ -340,6 +374,41 @@ func (c *Client) handleUndo(hub *Hub) {
 
 	// If undo leaves turn on AI, let AI move immediately.
 	c.runAIMoveIfNeeded(hub)
+}
+
+func (c *Client) handleHint(data json.RawMessage) {
+	var hintData struct {
+		Algorithm string `json:"algorithm"`
+		Level     string `json:"level"`
+	}
+	_ = json.Unmarshal(data, &hintData)
+	if c.Session.State.GameOver {
+		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Game is over"})})
+		return
+	}
+	alg := c.Session.HintSettings[c.Color].Algorithm
+	lv := c.Session.HintSettings[c.Color].Level
+	if hintData.Algorithm != "" {
+		alg = game.ParseAlgorithmName(hintData.Algorithm)
+	}
+	if hintData.Level != "" {
+		lv = game.ParseLevel(hintData.Level)
+	}
+	c.Session.HintSettings[c.Color] = game.HintSettings{Algorithm: alg, Level: lv}
+	engine := game.NewHintEngine(c.Session.State.Size, alg)
+	best := engine.BestMove(c.Session.State, c.Color, lv)
+	c.Session.LastHint[c.Color] = best
+	c.SendJSON(WSMessage{
+		Type: "HINT_RESULT",
+		Data: mustMarshal(map[string]any{
+			"position": best,
+			"algorithm": map[string]string{
+				"name": string(alg),
+				"code": game.AlgorithmProfile(alg).Code,
+			},
+			"level": string(lv),
+		}),
+	})
 }
 
 func (c *Client) runAIMoveIfNeeded(hub *Hub) {
@@ -384,6 +453,7 @@ func (c *Client) runAIMoveIfNeeded(hub *Hub) {
 		}
 
 		aiFlips, _ := gs.DoMove(bestPos.R, bestPos.C, gs.CurrentPlayer)
+		c.Session.LastHint[c.Color] = nil
 		aiMsg := WSMessage{
 			Type: "AI_MOVE",
 			Data: mustMarshal(map[string]any{
@@ -447,9 +517,13 @@ func buildPrefixStates(size int, history []game.Move) []*game.GameState {
 
 	for _, m := range history {
 		if m.Position != nil {
+			before := len(gs.History)
 			_, ok := gs.DoMove(m.Position.R, m.Position.C, m.Player)
 			if !ok {
 				break
+			}
+			if len(gs.History) > before {
+				gs.History[len(gs.History)-1].HintTag = m.HintTag
 			}
 		} else {
 			gs.History = append(gs.History, game.Move{

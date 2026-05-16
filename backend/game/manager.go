@@ -14,6 +14,16 @@ const (
 	ModePVP GameMode = "PVP"
 )
 
+type AISettings struct {
+	Algorithm AIAlgorithmName `json:"algorithm"`
+	Level     AILevel         `json:"level"`
+}
+
+type HintSettings struct {
+	Algorithm AIAlgorithmName `json:"algorithm"`
+	Level     AILevel         `json:"level"`
+}
+
 // Session represents a single game session (PvE or PvP).
 type Session struct {
 	ID      string
@@ -23,6 +33,10 @@ type Session struct {
 	AI      *AI
 	Ready   bool // PvP: both players connected
 	Mutex   sync.Mutex
+
+	AISettings   AISettings
+	HintSettings map[Player]HintSettings
+	LastHint     map[Player]*Position
 }
 
 // Manager handles session creation and lookup.
@@ -39,12 +53,12 @@ func NewManager() *Manager {
 }
 
 // CreateSession creates a new game session.
-func (m *Manager) CreateSession(mode GameMode, color Player, size int) *Session {
+func (m *Manager) CreateSession(mode GameMode, color Player, size int, aiAlgorithm AIAlgorithmName, aiLevel AILevel) *Session {
 	id := uuid.New().String()
 	gs := NewGameState(size)
 
 	aiColor := color.Opponent()
-	ai := NewAI(size, aiColor, AIDepth(size))
+	ai := NewAI(size, aiColor, aiAlgorithm, aiLevel)
 
 	s := &Session{
 		ID:      id,
@@ -52,13 +66,21 @@ func (m *Manager) CreateSession(mode GameMode, color Player, size int) *Session 
 		State:   gs,
 		Players: make(map[Player]string),
 		AI:      ai,
-		Ready:   mode == ModePVE, // PvE is ready immediately
+		Ready:   mode == ModePVE,
+		AISettings: AISettings{
+			Algorithm: aiAlgorithm,
+			Level:     aiLevel,
+		},
+		HintSettings: make(map[Player]HintSettings),
+		LastHint:     make(map[Player]*Position),
 	}
 
-	s.Players[color] = "" // placeholder until WS connects
+	s.Players[color] = ""
 	if mode == ModePVE {
 		s.Players[aiColor] = "AI"
 	}
+	s.HintSettings[color] = HintSettings{Algorithm: aiAlgorithm, Level: aiLevel}
+	s.HintSettings[aiColor] = HintSettings{Algorithm: aiAlgorithm, Level: aiLevel}
 
 	m.mu.Lock()
 	m.sessions[id] = s
@@ -67,7 +89,7 @@ func (m *Manager) CreateSession(mode GameMode, color Player, size int) *Session 
 }
 
 // JoinPvpSession joins an existing PvP session or creates one.
-func (m *Manager) JoinPvpSession(color Player, size int, existingID string) *Session {
+func (m *Manager) JoinPvpSession(color Player, size int, existingID string, aiAlgorithm AIAlgorithmName, aiLevel AILevel) *Session {
 	if existingID != "" {
 		m.mu.RLock()
 		s, ok := m.sessions[existingID]
@@ -75,18 +97,19 @@ func (m *Manager) JoinPvpSession(color Player, size int, existingID string) *Ses
 		if ok && s.Mode == ModePVP && !s.Ready {
 			s.Players[color] = ""
 			s.Ready = true
+			if _, exists := s.HintSettings[color]; !exists {
+				s.HintSettings[color] = HintSettings{Algorithm: aiAlgorithm, Level: aiLevel}
+			}
 			return s
 		}
 	}
 
-	// Create a new session waiting for second player
-	s := m.CreateSession(ModePVP, color, size)
+	s := m.CreateSession(ModePVP, color, size, aiAlgorithm, aiLevel)
 	s.Players[color] = ""
 	s.Ready = false
 	return s
 }
 
-// GetSession retrieves a session by ID.
 func (m *Manager) GetSession(id string) (*Session, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -94,7 +117,6 @@ func (m *Manager) GetSession(id string) (*Session, bool) {
 	return s, ok
 }
 
-// DeleteSession removes a session.
 func (m *Manager) DeleteSession(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
