@@ -3,10 +3,10 @@
     <div class="btn-row">
       <button :disabled="!canUndo || gameOver" @click="$emit('undo')">悔棋</button>
       <button @click="$emit('toggleHistory')">{{ showHistory ? '隐藏记录' : '显示记录' }}</button>
-      <button @click="$emit('toggleHint')">提示: {{ showHint ? '开' : '关' }}</button>
+      <button :disabled="disableHint" @click="$emit('toggleHint')">提示: {{ showHint ? '开' : '关' }}</button>
       <button @click="$emit('back')">返回</button>
     </div>
-    <div v-if="showHint" class="hint-config">
+    <div v-if="showHint && !disableHint" class="hint-config">
       <select :value="hintAlgorithm" @change="$emit('hintAlgorithmChange', ($event.target as HTMLSelectElement).value)">
         <option v-for="a in algorithms" :key="a" :value="a">{{ a }}</option>
       </select>
@@ -20,7 +20,7 @@
 </template>
 
 <script setup lang="ts">
-defineProps<{ canUndo: boolean; gameOver: boolean; showHistory: boolean; showHint: boolean; hintAlgorithm: string; hintLevel: string }>()
+defineProps<{ canUndo: boolean; gameOver: boolean; showHistory: boolean; showHint: boolean; hintAlgorithm: string; hintLevel: string; disableHint?: boolean }>()
 defineEmits<{ (e: 'undo'): void; (e: 'toggleHistory'): void; (e: 'toggleHint'): void; (e: 'back'): void; (e: 'hintAlgorithmChange', value: string): void; (e: 'hintLevelChange', value: string): void }>()
 
 const algorithms = ['增强博弈', '主线剪枝', '蒙特树搜', '混合博弈']

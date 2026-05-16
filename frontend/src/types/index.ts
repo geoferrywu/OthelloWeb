@@ -29,6 +29,8 @@ export interface GameInitData {
     pairCode: string
     isHost: boolean
     ready: boolean
+    isSpectator?: boolean
+    activeHint?: Position | null
   }
 }
 

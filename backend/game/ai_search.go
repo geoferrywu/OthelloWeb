@@ -59,6 +59,7 @@ func (s *searchStrategy) evaluate(board [][]Player, color Player) int {
 	return score
 }
 
+// terminalScore 判断局面是否为终局并返回对应分数。
 func (s *searchStrategy) terminalScore(board [][]Player, color Player) (int, bool) {
 	size := len(board)
 	if len(validMovesOnBoard(board, size, color)) > 0 || len(validMovesOnBoard(board, size, color.Opponent())) > 0 {

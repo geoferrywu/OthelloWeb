@@ -119,6 +119,7 @@ type OnlineJoinResult struct {
 	Session       *Session
 	IsHost        bool
 	AssignedColor Player
+	IsSpectator   bool
 	Reject        string
 }
 
@@ -134,7 +135,7 @@ func (m *Manager) JoinPvpOnlineSession(pairCode string, color Player, size int, 
 			_, blackTaken := s.Players[BLACK]
 			_, whiteTaken := s.Players[WHITE]
 			if blackTaken && whiteTaken {
-				return OnlineJoinResult{Reject: "该配对码已满，请重新输入配对码"}
+				return OnlineJoinResult{Session: s, AssignedColor: EMPTY, IsSpectator: true}
 			}
 
 			guestColor := color
@@ -142,7 +143,7 @@ func (m *Manager) JoinPvpOnlineSession(pairCode string, color Player, size int, 
 				guestColor = guestColor.Opponent()
 			}
 			if _, exists := s.Players[guestColor]; exists {
-				return OnlineJoinResult{Reject: "该配对码已满，请重新输入配对码"}
+				return OnlineJoinResult{Session: s, AssignedColor: EMPTY, IsSpectator: true}
 			}
 
 			s.Players[guestColor] = ""

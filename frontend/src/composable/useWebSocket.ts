@@ -117,7 +117,7 @@ export function useWebSocket(): UseWebSocketReturn {
         overData.value = null
         passEvent.value = false
         flippedCells.value = []
-        hintMove.value = null
+        hintMove.value = data.online?.activeHint || null
         stopCountdown()
         countdown.value = 0
         break

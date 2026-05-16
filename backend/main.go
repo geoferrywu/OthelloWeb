@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -25,12 +26,14 @@ type WSMessage struct {
 
 // Client represents a single WS connection.
 type Client struct {
-	Conn    *websocket.Conn
-	Session *game.Session
-	Color   game.Player
-	IsHost  bool
-	Send    chan []byte
-	mu      sync.Mutex
+	Conn        *websocket.Conn
+	Session     *game.Session
+	ID          string
+	Color       game.Player
+	IsHost      bool
+	IsSpectator bool
+	Send        chan []byte
+	mu          sync.Mutex
 }
 
 // Hub manages all connected clients.
@@ -60,14 +63,14 @@ func (h *Hub) Run() {
 		select {
 		case client := <-h.Register:
 			h.mu.Lock()
-			h.Clients[client.Session.ID+"-"+client.Color.String()] = client
+			h.Clients[client.Session.ID+"-"+client.ID] = client
 			h.mu.Unlock()
 
 			// Send INIT message
 			h.sendInit(client)
 
 		case client := <-h.Unregister:
-			key := client.Session.ID + "-" + client.Color.String()
+			key := client.Session.ID + "-" + client.ID
 			h.mu.Lock()
 			delete(h.Clients, key)
 			h.mu.Unlock()
@@ -111,10 +114,16 @@ func (h *Hub) sendInit(client *Client) {
 		},
 	}
 	if s.Mode == game.ModePVPOnline {
+		var activeHint *game.Position
+		if s.State != nil {
+			activeHint = s.LastHint[s.State.CurrentPlayer]
+		}
 		data["online"] = map[string]any{
-			"pairCode": s.PairCode,
-			"isHost":   client.IsHost,
-			"ready":    s.Ready,
+			"pairCode":    s.PairCode,
+			"isHost":      client.IsHost,
+			"ready":       s.Ready,
+			"isSpectator": client.IsSpectator,
+			"activeHint":  activeHint,
 		}
 	}
 	msg := WSMessage{Type: "INIT", Data: mustMarshal(data)}
@@ -225,6 +234,9 @@ func (h *Hub) handleDisconnect(client *Client) {
 	if client.Session.Mode != game.ModePVPOnline {
 		return
 	}
+	if client.IsSpectator {
+		return
+	}
 	client.Session.Mutex.Lock()
 	defer client.Session.Mutex.Unlock()
 	if client.Session.State.GameOver {
@@ -239,7 +251,7 @@ func (h *Hub) handleDisconnect(client *Client) {
 			"blackScore": black,
 			"whiteScore": white,
 			"reason":     "PLAYER_LEFT",
-			"message":    "有玩家中途退出，对局结束",
+			"message":    "有玩家离开，游戏结束",
 		}),
 	})
 	h.stopOnlineTurnTimers(client.Session.ID)
@@ -280,6 +292,7 @@ func handleWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 
 	client := &Client{
 		Conn: conn,
+		ID:   fmt.Sprintf("%d", time.Now().UnixNano()),
 		Send: make(chan []byte, 256),
 	}
 
@@ -341,13 +354,13 @@ func handleWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		session = hub.Manager.JoinPvpSession(color, joinData.Size, joinData.GameID, aiAlgorithm, aiLevel)
 	} else if mode == game.ModePVPOnline {
 		if len(joinData.PairCode) != 4 {
-			conn.WriteJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "配对码必须为4位数字"})})
+			conn.WriteJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Pair code must be 4 digits"})})
 			conn.Close()
 			return
 		}
 		for _, ch := range joinData.PairCode {
 			if ch < '0' || ch > '9' {
-				conn.WriteJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "配对码必须为4位数字"})})
+				conn.WriteJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Pair code must be 4 digits"})})
 				conn.Close()
 				return
 			}
@@ -360,6 +373,7 @@ func handleWS(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		}
 		session = result.Session
 		client.IsHost = result.IsHost
+		client.IsSpectator = result.IsSpectator
 		color = result.AssignedColor
 	} else {
 		session = hub.Manager.CreateSession(mode, color, joinData.Size, aiAlgorithm, aiLevel)
@@ -421,12 +435,19 @@ func (c *Client) handleMessage(hub *Hub, msg WSMessage) {
 	defer c.Session.Mutex.Unlock()
 
 	if c.Session.Mode == game.ModePVPOnline && !c.Session.Ready && msg.Type != "PING" {
-		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "等待对手加入后开始游戏"})})
+		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Waiting for opponent to join"})})
+		return
+	}
+	if c.IsSpectator && msg.Type != "PING" {
+		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Spectator mode is read-only"})})
 		return
 	}
 
 	if c.Session.State.GameOver {
-		c.SendJSON(WSMessage{Type: "ERROR", Data: mustMarshal(map[string]string{"message": "Game is over"})})
+		// Ignore late client commands after game over to avoid noisy ERROR race.
+		if msg.Type == "PING" {
+			c.SendJSON(WSMessage{Type: "PONG"})
+		}
 		return
 	}
 
@@ -434,7 +455,7 @@ func (c *Client) handleMessage(hub *Hub, msg WSMessage) {
 	case "MOVE":
 		c.handleMove(hub, msg.Data)
 	case "HINT":
-		c.handleHint(msg.Data)
+		c.handleHint(hub, msg.Data)
 	case "UNDO":
 		c.handleUndo(hub)
 	case "PING":
@@ -545,7 +566,7 @@ func (c *Client) handleUndo(hub *Hub) {
 	c.runAIMoveIfNeeded(hub)
 }
 
-func (c *Client) handleHint(data json.RawMessage) {
+func (c *Client) handleHint(hub *Hub, data json.RawMessage) {
 	var hintData struct {
 		Algorithm string `json:"algorithm"`
 		Level     string `json:"level"`
@@ -571,7 +592,7 @@ func (c *Client) handleHint(data json.RawMessage) {
 	engine := game.NewHintEngine(c.Session.State.Size, alg)
 	best := engine.BestMove(c.Session.State, hintPlayer, lv)
 	c.Session.LastHint[hintPlayer] = best
-	c.SendJSON(WSMessage{
+	hintMsg := WSMessage{
 		Type: "HINT_RESULT",
 		Data: mustMarshal(map[string]any{
 			"position": best,
@@ -581,7 +602,12 @@ func (c *Client) handleHint(data json.RawMessage) {
 			},
 			"level": string(lv),
 		}),
-	})
+	}
+	if c.Session.Mode == game.ModePVPOnline && hintPlayer == c.Session.State.CurrentPlayer {
+		hub.Broadcast(c.Session.State, c, hintMsg)
+		return
+	}
+	c.SendJSON(hintMsg)
 }
 
 func (c *Client) runAIMoveIfNeeded(hub *Hub) {

@@ -13,7 +13,7 @@
         对局结束
       </h2>
       <p>{{ message }}</p>
-      <button @click="$emit('restart')">再来一局</button>
+      <button @click="$emit('restart')">{{ actionText }}</button>
     </div>
   </div>
 </template>
@@ -24,6 +24,7 @@ import type { GameOverData } from '../types'
 
 const props = defineProps<{
   overData: GameOverData
+  actionText?: string
 }>()
 
 defineEmits<{ (e: 'restart'): void }>()
@@ -39,6 +40,8 @@ const message = computed(() => {
   if (winner === 'BLACK') return `黑${blackScore} : ${whiteScore} 白，黑方获胜`
   return `白${whiteScore} : ${blackScore} 黑，白方获胜`
 })
+
+const actionText = computed(() => props.actionText || '再来一局')
 
 function clampPosition(nextX: number, nextY: number) {
   const modal = modalRef.value

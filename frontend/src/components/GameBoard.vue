@@ -40,6 +40,7 @@ const props = defineProps<{
   showHint: boolean
   showHistory: boolean
   isPlayerTurn: boolean
+  allowPreviewMoves?: boolean
   lastMove: Position | null
   flippedCells: Position[]
   hintMove: Position | null
@@ -92,7 +93,7 @@ watch(() => props.historyEntries.length, async () => {
 
 const validMovesSet = computed(() => {
   if (!boardReady.value) return new Set<string>()
-  if (!props.isPlayerTurn) return new Set<string>()
+  if (!props.isPlayerTurn && !props.allowPreviewMoves) return new Set<string>()
   const moves = new Set<string>()
   const s = size.value
   const board = props.board

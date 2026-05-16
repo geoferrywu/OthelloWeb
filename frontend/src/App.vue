@@ -34,6 +34,7 @@
                 :showHint="showHint"
                 :hintAlgorithm="hintAlgorithm"
                 :hintLevel="hintLevel"
+                :disableHint="isOnlineSpectator"
                 @undo="handleUndo"
                 @toggleHistory="showHistory = !showHistory"
                 @toggleHint="toggleHint"
@@ -46,9 +47,10 @@
             <GameBoard
               :board="currentBoard"
               :currentPlayer="wsCurrentPlayer"
-              :showHint="showHint"
+              :showHint="showHint || isOnlineSpectator"
               :showHistory="showHistory"
               :isPlayerTurn="isPlayerTurn"
+              :allowPreviewMoves="isOnlineSpectator"
               :lastMove="lastMovePos"
               :flippedCells="flippedCells"
               :hintMove="hintMove"
@@ -60,8 +62,8 @@
         <div v-else class="status">棋盘数据加载中...</div>
       </section>
 
-      <EndModal v-if="wsGameOver && overData && !isOnlineMode" :overData="overData" @restart="handleRestart" />
-      <EndModal v-if="wsGameOver && overData && isOnlineMode && overData.reason === 'NORMAL'" :overData="overData" @restart="handleBack" />
+      <EndModal v-if="wsGameOver && overData && !isOnlineMode" :overData="overData" actionText="再来一局" @restart="handleRestart" />
+      <EndModal v-if="wsGameOver && overData && isOnlineMode && overData.reason === 'NORMAL'" :overData="overData" :actionText="isOnlineSpectator ? '返回' : '再来一局'" @restart="handleBack" />
     </template>
   </div>
 </template>
@@ -103,6 +105,7 @@ const currentBoard = computed(() => wsBoard.value || [])
 const boardReady = computed(() => currentBoard.value.length > 0)
 const isOnlineMode = computed(() => gameMode.value === 'PVP_ONLINE')
 const onlineReady = computed(() => !!init.value?.online?.ready)
+const isOnlineSpectator = computed(() => isOnlineMode.value && !!init.value?.online?.isSpectator)
 
 const moveLog = computed(() => {
   return (wsHistory.value || []).map((m) => {
@@ -115,6 +118,7 @@ const moveLog = computed(() => {
 
 const isPlayerTurn = computed(() => {
   if (wsGameOver.value) return false
+  if (isOnlineSpectator.value) return false
   if (gameMode.value === 'PVP') return true
   return wsCurrentPlayer.value === playerColor.value
 })
@@ -127,6 +131,7 @@ const currentPlayerName = computed(() => wsCurrentPlayer.value === BLACK ? '黑�
 const passColorName = computed(() => wsCurrentPlayer.value === BLACK ? '白方' : '黑方')
 const onlineWaitingText = computed(() => {
   if (!isOnlineMode.value) return ''
+  if (isOnlineSpectator.value) return '观战模式'
   const role = init.value?.online?.isHost ? '主玩家' : '客玩家'
   const code = init.value?.online?.pairCode || pairCode.value
   return `${role}（配对码 ${code}），等待对手加入...`
@@ -138,11 +143,17 @@ const onlineCountdownText = computed(() => {
 })
 
 const blackRole = computed(() => {
-  if (gameMode.value === 'PVP_ONLINE') return playerColor.value === BLACK ? '你' : '对手'
+  if (gameMode.value === 'PVP_ONLINE') {
+    if (isOnlineSpectator.value) return ''
+    return playerColor.value === BLACK ? '你' : '对手'
+  }
   return init.value?.players?.BLACK || (gameMode.value === 'PVP' ? '玩家' : (playerColor.value === BLACK ? '玩家' : 'AI'))
 })
 const whiteRole = computed(() => {
-  if (gameMode.value === 'PVP_ONLINE') return playerColor.value === WHITE ? '你' : '对手'
+  if (gameMode.value === 'PVP_ONLINE') {
+    if (isOnlineSpectator.value) return ''
+    return playerColor.value === WHITE ? '你' : '对手'
+  }
   return init.value?.players?.WHITE || (gameMode.value === 'PVP' ? '玩家' : (playerColor.value === WHITE ? '玩家' : 'AI'))
 })
 
@@ -195,7 +206,10 @@ watch(wsCurrentPlayer, (val) => {
   if (showHint.value && isPlayerTurn.value && !wsGameOver.value) requestHint(hintAlgorithm.value, hintLevel.value)
 })
 watch(errorMessage, (msg) => {
-  if (msg) window.alert(msg)
+  if (!msg) return
+  // Prevent blocking UI repaint with modal alerts during game updates.
+  if (gameStarted.value) return
+  window.alert(msg)
 })
 watch(wsGameOver, (v) => {
   if (!v || !isOnlineMode.value) return
