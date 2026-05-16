@@ -14,6 +14,7 @@
         <div class="pill-row">
           <button class="pill" :class="{ selected: mode === 'PVE' }" @click="mode = 'PVE'">人机对战</button>
           <button class="pill" :class="{ selected: mode === 'PVP' }" @click="mode = 'PVP'">双人对战</button>
+          <button class="pill" :class="{ selected: mode === 'PVP_ONLINE' }" @click="mode = 'PVP_ONLINE'">在线双人</button>
         </div>
       </div>
 
@@ -23,6 +24,11 @@
           <button class="pill" :class="{ selected: color === 'BLACK' }" @click="color = 'BLACK'">黑方先手</button>
           <button class="pill" :class="{ selected: color === 'WHITE' }" @click="color = 'WHITE'">白方后手</button>
         </div>
+      </div>
+
+      <div v-if="mode === 'PVP_ONLINE'" class="option-group">
+        <label>配对码（4位数字）</label>
+        <input v-model="pairCode" maxlength="4" inputmode="numeric" pattern="[0-9]*" placeholder="例如 1234" />
       </div>
 
       <div class="option-group">
@@ -58,7 +64,7 @@ import type { GameMode, Color, AILevel } from '../types'
 defineProps<{ wsStatus: string }>()
 
 const emit = defineEmits<{
-  (e: 'start', mode: GameMode, color: Color, size: number, aiAlgorithm: string, aiLevel: AILevel): void
+  (e: 'start', mode: GameMode, color: Color, size: number, aiAlgorithm: string, aiLevel: AILevel, pairCode?: string): void
 }>()
 
 const mode = ref<GameMode>('PVE')
@@ -68,8 +74,15 @@ const algorithms = ['增强博弈', '主线剪枝', '蒙特树搜', '混合博�
 const levels: AILevel[] = ['easy', 'normal', 'hard']
 const aiAlgorithm = ref(algorithms[0])
 const aiLevel = ref<AILevel>('normal')
+const pairCode = ref('')
 
 function handleStart() {
+  if (mode.value === 'PVP_ONLINE') {
+    const code = pairCode.value.trim()
+    if (!/^\d{4}$/.test(code)) return
+    emit('start', mode.value, color.value, size.value, aiAlgorithm.value, aiLevel.value, code)
+    return
+  }
   emit('start', mode.value, color.value, size.value, aiAlgorithm.value, aiLevel.value)
 }
 </script>
@@ -182,6 +195,14 @@ function handleStart() {
   color: #b7c0d3;
   box-shadow: none;
   cursor: default;
+}
+
+input {
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #e9ecff;
 }
 
 .bg-orb {

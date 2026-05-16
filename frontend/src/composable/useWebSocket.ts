@@ -26,12 +26,15 @@ interface UseWebSocketReturn {
   passEvent: Ref<boolean>
   flippedCells: Ref<Position[]>
   hintMove: Ref<Position | null>
+  errorMessage: Ref<string>
+  countdown: Ref<number>
   connect: () => void
-  joinGame: (mode: GameMode, color: Color, size: number, aiAlgorithm: string, aiLevel: AILevel) => void
+  joinGame: (mode: GameMode, color: Color, size: number, aiAlgorithm: string, aiLevel: AILevel, pairCode?: string) => void
   sendMove: (r: number, c: number) => void
   sendUndo: () => void
   requestHint: (algorithm: string, level: AILevel) => void
   reconnect: () => void
+  leaveGame: () => void
 }
 
 let ws: WebSocket | null = null
@@ -47,6 +50,8 @@ export function useWebSocket(): UseWebSocketReturn {
   const passEvent = ref(false)
   const flippedCells = ref<Position[]>([])
   const hintMove = ref<Position | null>(null)
+  const errorMessage = ref('')
+  const countdown = ref(0)
 
   function resolveWsUrl(): string {
     const envUrl = import.meta.env.VITE_WS_URL as string | undefined
@@ -91,6 +96,7 @@ export function useWebSocket(): UseWebSocketReturn {
         passEvent.value = false
         flippedCells.value = []
         hintMove.value = null
+        countdown.value = 0
         break
       }
       case 'STATE': {
@@ -101,6 +107,11 @@ export function useWebSocket(): UseWebSocketReturn {
         passEvent.value = !!data.pass
         flippedCells.value = data.flipped || []
         hintMove.value = null
+        break
+      }
+      case 'COUNTDOWN': {
+        const data = msg.data as unknown as { seconds?: number }
+        countdown.value = Math.max(0, data.seconds || 0)
         break
       }
       case 'AI_MOVE': {
@@ -122,6 +133,12 @@ export function useWebSocket(): UseWebSocketReturn {
       case 'GAME_OVER': {
         overData.value = msg.data as unknown as GameOverData
         gameOver.value = true
+        countdown.value = 0
+        break
+      }
+      case 'ERROR': {
+        const data = msg.data as unknown as { message?: string }
+        errorMessage.value = data?.message || '请求失败'
         break
       }
     }
@@ -132,7 +149,7 @@ export function useWebSocket(): UseWebSocketReturn {
     ws.send(JSON.stringify({ type, data }))
   }
 
-  function joinGame(mode: GameMode, color: Color, size: number, aiAlgorithm: string, aiLevel: AILevel) {
+  function joinGame(mode: GameMode, color: Color, size: number, aiAlgorithm: string, aiLevel: AILevel, pairCode?: string) {
     if (ws) {
       ws.onclose = null
       ws.onerror = null
@@ -141,10 +158,12 @@ export function useWebSocket(): UseWebSocketReturn {
     }
     status.value = 'disconnected'
 
+    errorMessage.value = ''
+    countdown.value = 0
     connect()
     const checkOpen = () => {
       if (ws && ws.readyState === WebSocket.OPEN) {
-        send('JOIN', { mode, color, size, aiAlgorithm, aiLevel })
+        send('JOIN', { mode, color, size, aiAlgorithm, aiLevel, pairCode })
         return
       }
       if (ws && ws.readyState === WebSocket.CONNECTING) {
@@ -167,6 +186,16 @@ export function useWebSocket(): UseWebSocketReturn {
     connect()
   }
 
+  function leaveGame() {
+    if (ws) {
+      ws.onclose = null
+      ws.onerror = null
+      ws.close()
+      ws = null
+    }
+    status.value = 'disconnected'
+  }
+
   return {
     status,
     init,
@@ -178,12 +207,15 @@ export function useWebSocket(): UseWebSocketReturn {
     passEvent,
     flippedCells,
     hintMove,
+    errorMessage,
+    countdown,
     connect: () => connect(),
     joinGame,
     sendMove,
     sendUndo,
     requestHint,
     reconnect,
+    leaveGame,
   }
 }
 

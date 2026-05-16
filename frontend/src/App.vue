@@ -11,7 +11,9 @@
         <Scoreboard :board="currentBoard" :currentPlayer="wsCurrentPlayer" :isThinking="isThinking" />
 
         <div class="status">
-          <span v-if="passShown">{{ passColorName }}跳过</span>
+          <span v-if="isOnlineMode && !onlineReady">{{ onlineWaitingText }}</span>
+          <span v-else-if="isOnlineMode && countdown > 0">请在 {{ countdown }} 秒内落子</span>
+          <span v-else-if="passShown">{{ passColorName }}跳过</span>
           <span v-else-if="isThinking && wsCurrentPlayer === aiColor">{{ currentPlayerName }}思考中...</span>
           <span v-else>{{ currentPlayerName }}落子</span>
         </div>
@@ -58,7 +60,7 @@
         <div v-else class="status">棋盘数据加载中...</div>
       </section>
 
-      <EndModal v-if="wsGameOver && overData" :overData="overData" @restart="handleRestart" />
+      <EndModal v-if="wsGameOver && overData && !isOnlineMode" :overData="overData" @restart="handleRestart" />
     </template>
   </div>
 </template>
@@ -73,7 +75,7 @@ import GameBoard from './components/GameBoard.vue'
 import ControlPanel from './components/ControlPanel.vue'
 import EndModal from './components/EndModal.vue'
 
-const { status: wsStatus, init, board: wsBoard, currentPlayer: wsCurrentPlayer, history: wsHistory, gameOver: wsGameOver, overData, passEvent, flippedCells: wsFlippedCells, hintMove, connect, joinGame, sendMove, sendUndo, requestHint } = useWebSocket()
+const { status: wsStatus, init, board: wsBoard, currentPlayer: wsCurrentPlayer, history: wsHistory, gameOver: wsGameOver, overData, passEvent, flippedCells: wsFlippedCells, hintMove, errorMessage, countdown, connect, joinGame, sendMove, sendUndo, requestHint, leaveGame } = useWebSocket()
 
 const gameStarted = ref(false)
 const gameMode = ref<GameMode>('PVE')
@@ -91,12 +93,15 @@ const aiAlgorithm = ref('增强博弈')
 const aiLevel = ref<AILevel>('normal')
 const hintAlgorithm = ref('增强博弈')
 const hintLevel = ref<AILevel>('normal')
+const pairCode = ref('')
 
 const BLACK: Player = 1
 const WHITE: Player = 2
 
 const currentBoard = computed(() => wsBoard.value || [])
 const boardReady = computed(() => currentBoard.value.length > 0)
+const isOnlineMode = computed(() => gameMode.value === 'PVP_ONLINE')
+const onlineReady = computed(() => !!init.value?.online?.ready)
 
 const moveLog = computed(() => {
   return (wsHistory.value || []).map((m) => {
@@ -112,46 +117,60 @@ const isPlayerTurn = computed(() => {
   if (gameMode.value === 'PVP') return true
   return wsCurrentPlayer.value === playerColor.value
 })
-const canUndo = computed(() => gameMode.value === 'PVE' ? (wsHistory.value || []).length >= 1 && !wsGameOver.value : (wsHistory.value || []).length >= 2 && !wsGameOver.value && isPlayerTurn.value)
+const canUndo = computed(() => {
+  if (gameMode.value === 'PVE') return (wsHistory.value || []).length >= 1 && !wsGameOver.value
+  if (gameMode.value === 'PVP_ONLINE') return false
+  return (wsHistory.value || []).length >= 2 && !wsGameOver.value && isPlayerTurn.value
+})
 const currentPlayerName = computed(() => wsCurrentPlayer.value === BLACK ? '黑方' : '白方')
 const passColorName = computed(() => wsCurrentPlayer.value === BLACK ? '白方' : '黑方')
+const onlineWaitingText = computed(() => {
+  if (!isOnlineMode.value) return ''
+  const role = init.value?.online?.isHost ? '主玩家' : '客玩家'
+  const code = init.value?.online?.pairCode || pairCode.value
+  return `${role}（配对码 ${code}），等待对手加入...`
+})
 
 const blackRole = computed(() => init.value?.players?.BLACK || (gameMode.value === 'PVP' ? '玩家' : (playerColor.value === BLACK ? '玩家' : 'AI')))
 const whiteRole = computed(() => init.value?.players?.WHITE || (gameMode.value === 'PVP' ? '玩家' : (playerColor.value === WHITE ? '玩家' : 'AI')))
 
-function handleStart(mode: GameMode, color: Color, size: number, selectedAlgorithm: string, selectedLevel: AILevel) {
+function handleStart(mode: GameMode, color: Color, size: number, selectedAlgorithm: string, selectedLevel: AILevel, selectedPairCode?: string) {
   gameMode.value = mode
   playerColor.value = color === 'BLACK' ? BLACK : WHITE
   aiColor.value = playerColor.value === BLACK ? WHITE : BLACK
   boardSize.value = size
+  pairCode.value = selectedPairCode || ''
   aiAlgorithm.value = selectedAlgorithm
   aiLevel.value = selectedLevel
   // 提示算法默认固定为第一个：增强博弈，不跟随AI算法
   hintAlgorithm.value = '增强博弈'
   hintLevel.value = 'normal'
   gameStarted.value = true
-  joinGame(mode, color, size, selectedAlgorithm, selectedLevel)
+  joinGame(mode, color, size, selectedAlgorithm, selectedLevel, selectedPairCode)
 }
 
 function handlePlace(r: number, c: number) { if (!isPlayerTurn.value) return; sendMove(r, c); lastMovePos.value = { r, c } }
-function handleUndo() { sendUndo(); if (showHint.value) requestHint(hintAlgorithm.value, hintLevel.value) }
+function handleUndo() { if (isOnlineMode.value) return; sendUndo(); if (showHint.value) requestHint(hintAlgorithm.value, hintLevel.value) }
 function toggleHint() { showHint.value = !showHint.value; if (showHint.value) requestHint(hintAlgorithm.value, hintLevel.value) }
 function changeHintAlgorithm(value: string) { hintAlgorithm.value = value; if (showHint.value) requestHint(hintAlgorithm.value, hintLevel.value) }
 function changeHintLevel(value: string) { hintLevel.value = (value as AILevel); if (showHint.value) requestHint(hintAlgorithm.value, hintLevel.value) }
 
 function handleBack() {
+  if (gameStarted.value) leaveGame()
   gameStarted.value = false
   showHistory.value = false
   showHint.value = false
   lastMovePos.value = null
   flippedCells.value = []
+  pairCode.value = ''
+  connect()
 }
 
 function handleRestart() {
   // 重新开局时也恢复提示默认配置
   hintAlgorithm.value = '增强博弈'
   hintLevel.value = 'normal'
-  joinGame(gameMode.value, playerColor.value === BLACK ? 'BLACK' : 'WHITE', boardSize.value, aiAlgorithm.value, aiLevel.value)
+  joinGame(gameMode.value, playerColor.value === BLACK ? 'BLACK' : 'WHITE', boardSize.value, aiAlgorithm.value, aiLevel.value, pairCode.value || undefined)
 }
 
 function coord(r: number, c: number): string { return String.fromCharCode(65 + c) + (r + 1) }
@@ -162,6 +181,15 @@ watch(wsCurrentPlayer, (val) => {
   if (gameMode.value === 'PVE' && val === aiColor.value && !wsGameOver.value) isThinking.value = true
   else isThinking.value = false
   if (showHint.value && isPlayerTurn.value && !wsGameOver.value) requestHint(hintAlgorithm.value, hintLevel.value)
+})
+watch(errorMessage, (msg) => {
+  if (msg) window.alert(msg)
+})
+watch(wsGameOver, (v) => {
+  if (!v || !isOnlineMode.value) return
+  const message = overData.value?.message
+  if (message) window.alert(message)
+  handleBack()
 })
 watch(wsBoard, () => { if (isThinking.value) isThinking.value = false })
 watch(wsFlippedCells, (cells) => { flippedCells.value = cells || [] })
